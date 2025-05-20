@@ -208,7 +208,7 @@ export default function ToolbarPlugin() {
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
-  const [currentFontFamily, setCurrentFontFamily] = useState<string>('Arial, sans-serif');
+  const [currentFontFamily, setCurrentFontFamily] = useState<string>(`Arial, sans-serif`);
   const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
   const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
 
@@ -299,7 +299,7 @@ export default function ToolbarPlugin() {
 
 
       setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '16px'));
-      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', 'Arial, sans-serif'));
+      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `Arial, sans-serif`));
       setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
       setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
 
@@ -499,11 +499,11 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // Still seems problematic with build
-        console.warn("$clearFormatting is currently not fully functional due to a build issue. Some styles might persist. Attempting manual reset.");
+        // LexicalSelectionUtil.$clearFormatting(selection); // Build issue, commented out
+        console.warn("$clearFormatting is currently not fully functional due to a build issue. Attempting manual reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
-          'font-family': 'Arial, sans-serif', 
+          'font-family': `Arial, sans-serif`, 
           'font-size': '16px',             
           'color': 'inherit',                
           'background-color': 'transparent', 
@@ -788,12 +788,43 @@ export default function ToolbarPlugin() {
         <Eraser className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
+
+      <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon" title="Generate Text with AI">
+            <Sparkles className="h-4 w-4" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Text with AI</DialogTitle>
+            <DialogDescription>
+              Enter a prompt and let AI generate text for you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Label htmlFor="ai-prompt">Prompt</Label>
+            <Input
+              id="ai-prompt"
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              placeholder="e.g., Write a short story about a dragon..."
+            />
+          </div>
+          <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsGenAIDialogOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={handleGenerateText} disabled={isGeneratingText}>
+              {isGeneratingText && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
-      <Dialog open={isInsertTableDialogOpen || isInsertImageDialogOpen || isGenAIDialogOpen} onOpenChange={(open) => {
+      <Dialog open={isInsertTableDialogOpen || isInsertImageDialogOpen} onOpenChange={(open) => {
           if (!open) {
               setIsInsertTableDialogOpen(false);
               setIsInsertImageDialogOpen(false);
-              setIsGenAIDialogOpen(false);
           }
       }}>
         <DropdownMenu>
@@ -803,12 +834,6 @@ export default function ToolbarPlugin() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-             <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGenAIDialogOpen(true); }}>
-                  <Sparkles className="mr-2 h-4 w-4" /> Generate Text with AI
-              </DropdownMenuItem>
-            </DialogTrigger>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
               <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
             </DropdownMenuItem>
@@ -864,32 +889,6 @@ export default function ToolbarPlugin() {
             </DialogFooter>
           </DialogContent>
         )}
-         {isGenAIDialogOpen && (
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Generate Text with AI</DialogTitle>
-                <DialogDescription>
-                  Enter a prompt and let AI generate text for you.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <Label htmlFor="ai-prompt">Prompt</Label>
-                <Input
-                  id="ai-prompt"
-                  value={promptText}
-                  onChange={(e) => setPromptText(e.target.value)}
-                  placeholder="e.g., Write a short story about a dragon..."
-                />
-              </div>
-              <DialogFooter>
-                 <Button type="button" variant="outline" onClick={() => setIsGenAIDialogOpen(false)}>Cancel</Button>
-                <Button type="button" onClick={handleGenerateText} disabled={isGeneratingText}>
-                  {isGeneratingText && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Generate
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          )}
       </Dialog>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -928,3 +927,4 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
+
