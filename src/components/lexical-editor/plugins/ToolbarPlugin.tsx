@@ -21,23 +21,26 @@ import {
   $createTextNode,
   INDENT_CONTENT_COMMAND,
   OUTDENT_CONTENT_COMMAND,
+  createCommand, // Import createCommand
+  LexicalCommand, // Import LexicalCommand
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
-import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, /* CODE_LANGUAGE_MAP, */ $createCodeNode, getCodeLanguages, getDefaultCodeLanguage, CodeNode } from '@lexical/code'; // CODE_LANGUAGE_MAP removed as it's not directly used
+import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, $createCodeNode, getCodeLanguages, getDefaultCodeLanguage, CodeNode } from '@lexical/code';
 import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
-import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as isQuoteNodeLexical, HeadingTagType /* QuoteNode removed */ } from '@lexical/rich-text';
+import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as isQuoteNodeLexical, HeadingTagType } from '@lexical/rich-text';
 import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace import
 
 
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
+// Equation related imports are removed as the feature was removed due to install issues with @lexical/math
+// import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
+  Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, /* Calculator, */ CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -52,8 +55,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  // DropdownMenuRadioGroup, // Not used
+  // DropdownMenuRadioItem, // Not used
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -77,14 +80,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
-import { createCommand, type LexicalCommand } from 'lexical';
 
+// Custom Commands
+export const OPEN_LINK_DIALOG_COMMAND: LexicalCommand<void> = createCommand('OPEN_LINK_DIALOG_COMMAND');
+export const CUSTOM_CLEAR_FORMATTING_COMMAND: LexicalCommand<void> = createCommand('CUSTOM_CLEAR_FORMATTING_COMMAND');
+export type TextCaseType = 'uppercase' | 'lowercase' | 'capitalize';
+export const CUSTOM_TRANSFORM_TEXT_CASE_COMMAND: LexicalCommand<TextCaseType> = createCommand('CUSTOM_TRANSFORM_TEXT_CASE_COMMAND');
 
-const LowPriority = COMMAND_PRIORITY_LOW;
 
 // Custom command for inserting image
 export const INSERT_IMAGE_COMMAND: LexicalCommand<{altText: string; src: string; width?: number; height?: number}> = createCommand('INSERT_IMAGE_COMMAND');
 
+
+const LowPriority = COMMAND_PRIORITY_LOW;
 
 const supportedBlockTypes = new Set([
   'paragraph',
@@ -142,18 +150,14 @@ const FONT_SIZE_OPTIONS: [string, string][] = [
   ['96px', '72pt (96px)'],
 ];
 
-
-// Helper to extract numeric part for font size display
 const getNumericFontSize = (fontSize: string) => {
   const match = fontSize.match(/^(\d+)/);
   return match ? match[1] : fontSize.replace('px', '');
 };
 
-
 const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Default', value: 'inherit' },
   { name: 'Black', value: 'hsl(var(--foreground))', isThemeVar: true },
-  // { name: 'White', value: 'hsl(var(--background))', isThemeVar: true }, // Often not good for text/highlight on light bg
   { name: 'Primary', value: 'hsl(var(--primary))', isThemeVar: true },
   { name: 'Secondary Text', value: 'hsl(var(--secondary-foreground))', isThemeVar: true },
   { name: 'Accent', value: 'hsl(var(--accent))', isThemeVar: true },
@@ -174,8 +178,8 @@ const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: st
   { value: 'center', label: 'Center Align', icon: AlignCenter, shortcut: 'Ctrl+Shift+E' },
   { value: 'right', label: 'Right Align', icon: AlignRight, shortcut: 'Ctrl+Shift+R' },
   { value: 'justify', label: 'Justify Align', icon: AlignJustify, shortcut: 'Ctrl+Shift+J' },
-  { value: 'start', label: 'Start Align', icon: AlignLeft }, // Will map to left for LTR
-  { value: 'end', label: 'End Align', icon: AlignRight },   // Will map to right for LTR
+  { value: 'start', label: 'Start Align', icon: AlignLeft },
+  { value: 'end', label: 'End Align', icon: AlignRight },
 ];
 
 
@@ -215,13 +219,13 @@ export default function ToolbarPlugin() {
   const [isSubscript, setIsSubscript] = useState(false);
   const [isSuperscript, setIsSuperscript] = useState(false);
   const [isCode, setIsCode] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(false); // For default highlight format
+  const [isHighlight, setIsHighlight] = useState(false);
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
   const [currentFontFamily, setCurrentFontFamily] = useState<string>(`var(--font-roboto), sans-serif`);
   const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
-  const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent'); // For color picker
+  const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
 
   const [isInsertTableDialogOpen, setIsInsertTableDialogOpen] = useState(false);
   const [tableRows, setTableRows] = useState('3');
@@ -233,7 +237,7 @@ export default function ToolbarPlugin() {
   
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('');
-  const [linkDialogInitialUrl, setLinkDialogInitialUrl] = useState(''); // Store original URL for editing
+  const [linkDialogInitialUrl, setLinkDialogInitialUrl] = useState('');
 
 
   const [isGeneratingText, setIsGeneratingText] = useState(false);
@@ -375,30 +379,32 @@ export default function ToolbarPlugin() {
           return true;
         },
         COMMAND_PRIORITY_LOW,
-      )
+      ),
+      editor.registerCommand(OPEN_LINK_DIALOG_COMMAND, () => {
+        openLinkDialog();
+        return true;
+      }, LowPriority)
     );
   }, [editor, updateToolbar]);
 
 const openLinkDialog = useCallback(() => {
     editor.getEditorState().read(() => {
         const selection = $getSelection();
-        if (!$isRangeSelection(selection)) {
-            setLinkDialogUrl('https://');
-            setIsLinkDialogOpen(true);
-            return;
-        }
-        const node = getSelectedNode(selection);
-        const parentLink = $findMatchingParent(node, $isLinkNode) || $findMatchingParent(node.getParentOrThrow(), $isLinkNode);
         let urlToEdit = 'https://';
-        if (parentLink && $isLinkNode(parentLink)) {
-            urlToEdit = parentLink.getURL();
-        } else if ($isLinkNode(node)) {
-            urlToEdit = node.getURL();
+        if ($isRangeSelection(selection)) {
+            const node = getSelectedNode(selection);
+            const parentLink = $findMatchingParent(node, $isLinkNode) || $findMatchingParent(node.getParentOrThrow(), $isLinkNode);
+            if (parentLink && $isLinkNode(parentLink)) {
+                urlToEdit = parentLink.getURL();
+            } else if ($isLinkNode(node)) {
+                urlToEdit = node.getURL();
+            }
         }
-        setLinkDialogUrl(urlToEdit);
+        setLinkDialogUrl(urlToEdit); // Pre-fill with https:// or actual link
     });
     setIsLinkDialogOpen(true);
 }, [editor]);
+
 
 const handleLinkDialogSubmit = useCallback(() => {
     if (linkDialogUrl.trim() === '' || linkDialogUrl.trim() === 'https://') {
@@ -494,6 +500,8 @@ const handleLinkDialogSubmit = useCallback(() => {
             const codeBlockNode = $getNearestNodeOfType(node, CodeNode); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet as string);
+            } else { // If not in a code block, but changing language for next code block
+                 LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
             }
         }
       });
@@ -538,64 +546,6 @@ const handleLinkDialogSubmit = useCallback(() => {
   const onHighlightColorSelect = (color: string) => {
     applyStyleText({ 'background-color': color });
   }
-
-
-  const transformTextCase = (textCase: 'uppercase' | 'lowercase' | 'capitalize') => {
-    editor.update(() => {
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) {
-        const selectedText = selection.getTextContent();
-        let transformedText = selectedText;
-        if (textCase === 'uppercase') {
-          transformedText = selectedText.toUpperCase();
-        } else if (textCase === 'lowercase') {
-          transformedText = selectedText.toLowerCase();
-        } else if (textCase === 'capitalize') {
-          transformedText = selectedText.replace(/\b\w/g, char => char.toUpperCase());
-        }
-        selection.insertText(transformedText);
-      }
-    });
-  };
-
-  const clearFormatting = () => {
-    editor.update(() => {
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues in the environment
-        console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
-
-        LexicalSelectionUtil.$patchStyleText(selection, {
-          'font-family': `var(--font-roboto), sans-serif`, 
-          'font-size': '16px',             
-          'color': 'inherit',                
-          'background-color': 'transparent', 
-          'font-weight': '',                 
-          'font-style': '',                  
-          'text-decoration': '',             
-        });
-        if (isBold) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
-        if (isItalic) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
-        if (isUnderline) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
-        if (isStrikethrough) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
-        if (isSubscript) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
-        if (isSuperscript) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
-        if (isCode) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
-        if (isHighlight) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
-        
-        const anchorNode = selection.anchor.getNode();
-        const element = $findMatchingParent(anchorNode, (e) => {
-            const parent = e.getParent();
-            return parent !== null && $isRootOrShadowRoot(parent);
-        }) || anchorNode.getTopLevelElementOrThrow();
-
-        if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
-             LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
-        }
-      }
-    });
-  };
-
 
   const copyCodeContent = useCallback(() => {
     if (blockType === 'code') {
@@ -686,13 +636,11 @@ const handleLinkDialogSubmit = useCallback(() => {
       toast({ variant: "destructive", title: "AI Generation Failed", description });
     } finally {
       setIsGeneratingText(false);
-      // setIsGenAIDialogOpen(false); // Keep dialog open
+      // setIsGenAIDialogOpen(false); // Keep dialog open based on preference
     }
   };
 
-
   const currentAlignmentOption = ALIGNMENT_OPTIONS.find(opt => opt.value === elementFormat) || ALIGNMENT_OPTIONS[0];
-
 
   return (
     <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1 text-sm sm:text-base">
@@ -717,7 +665,7 @@ const handleLinkDialogSubmit = useCallback(() => {
           <SelectItem value="ol"><ListOrdered className="mr-2 h-4 w-4 inline-block"/> Numbered List</SelectItem>
           <SelectItem value="check"><ListChecks className="mr-2 h-4 w-4 inline-block"/> Check List</SelectItem>
           <SelectItem value="quote"><Quote className="mr-2 h-4 w-4 inline-block"/> Quote</SelectItem>
-          <SelectItem value="code"><Code className="mr-2 h-4 w-4 inline-block"/> Code Block</SelectItem>
+          <SelectItem value="code"><CodeIcon className="mr-2 h-4 w-4 inline-block"/> Code Block</SelectItem>
         </SelectContent>
       </Select>
       
@@ -767,7 +715,7 @@ const handleLinkDialogSubmit = useCallback(() => {
         </SelectContent>
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
-
+      
       {/* Consolidated Text Formatting Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -795,18 +743,16 @@ const handleLinkDialogSubmit = useCallback(() => {
             <Superscript className="mr-2 h-4 w-4" /> Superscript <DropdownMenuShortcut>Ctrl+.</DropdownMenuShortcut>
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={isCode} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}>
-            <Code className="mr-2 h-4 w-4" /> Inline Code
+            <CodeIcon className="mr-2 h-4 w-4" /> Inline Code
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
             <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
           </DropdownMenuCheckboxItem>
           
           <DropdownMenuSeparator />
-
-          <DropdownMenuItem onSelect={(e) => {e.preventDefault(); openLinkDialog(); }}>
+          <DropdownMenuItem onSelect={() => editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined)}>
             <Link2 className="mr-2 h-4 w-4" /> Insert/Edit Link <DropdownMenuShortcut>Ctrl+K</DropdownMenuShortcut>
           </DropdownMenuItem>
-
           <DropdownMenuSeparator />
           
           <DropdownMenuSub>
@@ -875,30 +821,28 @@ const handleLinkDialogSubmit = useCallback(() => {
           </DropdownMenuSub>
 
           <DropdownMenuSeparator />
-
-          <DropdownMenuSub>
+           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
                 <CaseSensitive className="mr-2 h-4 w-4" /> Change Case
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
                 <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
+                    <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'lowercase')}>
                         <CaseLower className="mr-2 h-4 w-4" /> lowercase
-                         <DropdownMenuShortcut>Ctrl+Shift+L</DropdownMenuShortcut>
+                         {/* No shortcut for lowercase to avoid conflict with Align Left */}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
+                    <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'uppercase')}>
                         <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
                         <DropdownMenuShortcut>Ctrl+Shift+U</DropdownMenuShortcut>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
+                    <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'capitalize')}>
                         <CaseSensitive className="mr-2 h-4 w-4" /> Capitalize Case
                     </DropdownMenuItem>
                 </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>
-          
           <DropdownMenuSeparator/>
-          <DropdownMenuItem onClick={clearFormatting}>
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_CLEAR_FORMATTING_COMMAND, undefined)}>
             <Eraser className="mr-2 h-4 w-4" /> Clear Formatting <DropdownMenuShortcut>Ctrl+\</DropdownMenuShortcut>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -964,13 +908,15 @@ const handleLinkDialogSubmit = useCallback(() => {
                   <ImageIcon className="mr-2 h-4 w-4" /> Image
               </DropdownMenuItem>
             </DialogTrigger>
+            {/* Equation button removed due to install issues
             <DropdownMenuItem
               onClick={() => {
-                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
+                // editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
               }}
             >
               <Calculator className="mr-2 h-4 w-4" /> Equation
             </DropdownMenuItem>
+            */}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -1064,9 +1010,9 @@ const handleLinkDialogSubmit = useCallback(() => {
       <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{linkDialogInitialUrl ? "Edit Link" : "Insert Link"}</DialogTitle>
+                <DialogTitle>{linkDialogInitialUrl && linkDialogInitialUrl !== 'https://' ? "Edit Link" : "Insert Link"}</DialogTitle>
                 <DialogDescription>
-                    {linkDialogInitialUrl ? "Update the URL for the link." : "Enter the URL you want to link to."}
+                    {linkDialogInitialUrl && linkDialogInitialUrl !== 'https://' ? "Update the URL for the link." : "Enter the URL you want to link to."}
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -1088,4 +1034,3 @@ const handleLinkDialogSubmit = useCallback(() => {
     </div>
   );
 }
-

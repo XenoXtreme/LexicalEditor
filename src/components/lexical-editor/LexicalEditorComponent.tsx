@@ -1,7 +1,8 @@
 
 "use client";
-import React, { useEffect } from 'react'; // Added useEffect
+import React, { useEffect } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
@@ -10,25 +11,43 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
-import 'katex/dist/katex.min.css'; // Added KaTeX CSS
+import 'katex/dist/katex.min.css';
+import { mergeRegister, $findMatchingParent } from '@lexical/utils';
 
 
 import EditorTheme from './themes/EditorTheme';
 import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
-import ToolbarPlugin from './plugins/ToolbarPlugin';
+import ToolbarPlugin, { OPEN_LINK_DIALOG_COMMAND, CUSTOM_CLEAR_FORMATTING_COMMAND, CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, type TextCaseType } from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
 import { Toaster } from "@/components/ui/toaster";
 import { Separator } from '@/components/ui/separator';
 
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
-// import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
+import EquationPlugin from './plugins/EquationPlugin';
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
-import EquationPlugin from './plugins/EquationPlugin'; // Added EquationPlugin
+
+import {
+  $getSelection,
+  $isRangeSelection,
+  COMMAND_PRIORITY_NORMAL,
+  FORMAT_ELEMENT_COMMAND,
+  FORMAT_TEXT_COMMAND,
+  INDENT_CONTENT_COMMAND,
+  KEY_DOWN_COMMAND,
+  OUTDENT_CONTENT_COMMAND,
+  $createParagraphNode,
+  $isRootOrShadowRoot,
+  $isTextNode,
+} from 'lexical';
+import { $isListNode, ListNode } from '@lexical/list';
+import { $isCodeNode, CodeNode } from '@lexical/code';
+import { $isHeadingNode, $isQuoteNode as isQuoteNodeLexical, HeadingNode } from '@lexical/rich-text';
+import * as LexicalSelectionUtil from '@lexical/selection';
 
 
-// Initial editor state - can be empty or pre-filled
+// Initial editor state
 const initialJsonState = {
   "root": {
     "children": [
@@ -69,6 +88,7 @@ const initialJsonState = {
 
 
 export default function LexicalEditorComponent(): JSX.Element {
+  const [editor] = useLexicalComposerContext(); 
 
   const initialConfig = {
     namespace: 'LexicalCanvasEditor',
@@ -79,6 +99,143 @@ export default function LexicalEditorComponent(): JSX.Element {
       console.error("Lexical editor error:", error);
     },
   };
+  
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const unregister = mergeRegister(
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        (event: KeyboardEvent) => {
+          const { ctrlKey, metaKey, shiftKey, key } = event;
+          const modKey = ctrlKey || metaKey;
+
+          if (modKey && shiftKey) {
+            switch (key.toLowerCase()) {
+              case 'x': // Strikethrough: Ctrl+Shift+X
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+                return true;
+              case 'l': // Left Align: Ctrl+Shift+L
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left');
+                return true;
+              case 'e': // Center Align: Ctrl+Shift+E
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center');
+                return true;
+              case 'r': // Right Align: Ctrl+Shift+R
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right');
+                return true;
+              case 'j': // Justify Align: Ctrl+Shift+J
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'justify');
+                return true;
+              case 'u': // Uppercase: Ctrl+Shift+U
+                event.preventDefault();
+                editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'uppercase');
+                return true;
+            }
+          } else if (modKey) {
+            switch (key.toLowerCase()) {
+              case ',': // Subscript: Ctrl+,
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
+                return true;
+              case '.': // Superscript: Ctrl+.
+                event.preventDefault();
+                editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
+                return true;
+              case '\\': // Clear Formatting: Ctrl+\
+                event.preventDefault();
+                editor.dispatchCommand(CUSTOM_CLEAR_FORMATTING_COMMAND, undefined);
+                return true;
+              case 'k': // Link: Ctrl+K
+                event.preventDefault();
+                editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined);
+                return true;
+              case '[': // Outdent: Ctrl+[
+                event.preventDefault();
+                editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+                return true;
+              case ']': // Indent: Ctrl+]
+                event.preventDefault();
+                editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+                return true;
+            }
+          }
+          return false; // Let other handlers process the event
+        },
+        COMMAND_PRIORITY_NORMAL,
+      ),
+      editor.registerCommand(CUSTOM_CLEAR_FORMATTING_COMMAND, () => {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues, attempting manual clear
+            console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
+
+            LexicalSelectionUtil.$patchStyleText(selection, {
+                'font-family': `var(--font-roboto), sans-serif`, 
+                'font-size': '16px',             
+                'color': 'inherit',                
+                'background-color': 'transparent', 
+                'font-weight': '',                 
+                'font-style': '',                  
+                'text-decoration': '',             
+            });
+             // Toggle off formats manually as a fallback
+            if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
+            if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+            if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
+            if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+            if (selection.hasFormat('subscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
+            if (selection.hasFormat('superscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
+            if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+            if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
+
+
+            const anchorNode = selection.anchor.getNode();
+            const element = $findMatchingParent(anchorNode, (e) => {
+                const parent = e.getParent();
+                return parent !== null && $isRootOrShadowRoot(parent);
+            }) || anchorNode.getTopLevelElementOrThrow();
+
+            if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
+                 LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+            }
+          }
+        });
+        return true;
+      }, COMMAND_PRIORITY_NORMAL),
+
+      editor.registerCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, (payload: TextCaseType) => {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            const selectedText = selection.getTextContent();
+            let transformedText = selectedText;
+            if (payload === 'uppercase') {
+              transformedText = selectedText.toUpperCase();
+            } else if (payload === 'lowercase') {
+              transformedText = selectedText.toLowerCase();
+            } else if (payload === 'capitalize') {
+              transformedText = selectedText.replace(/\b\w/g, char => char.toUpperCase());
+            }
+            selection.insertText(transformedText);
+          }
+        });
+        return true;
+      }, COMMAND_PRIORITY_NORMAL)
+    );
+    return () => {
+      unregister();
+    };
+  }, [editor]);
+
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
@@ -98,7 +255,6 @@ export default function LexicalEditorComponent(): JSX.Element {
           <CodeHighlightPlugin />
           <HorizontalRulePlugin />
           <TablePlugin />
-          {/* <CollapsiblePlugin /> */} {/* Removed */}
           <EquationPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
@@ -108,3 +264,4 @@ export default function LexicalEditorComponent(): JSX.Element {
     </LexicalComposer>
   );
 }
+
