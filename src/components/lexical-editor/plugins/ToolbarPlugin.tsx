@@ -30,7 +30,7 @@ import * as LexicalSelectionUtil from '@lexical/selection';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-// import { INSERT_COLLAPSIBLE_COMMAND } from '@lexical/collapsible'; // Removed
+// import { INSERT_COLLAPSIBLE_COMMAND } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
 
 
 import {
@@ -107,7 +107,7 @@ const FONT_FAMILY_OPTIONS: [string, string][] = [
   ['Trebuchet MS', 'Trebuchet MS'],
   ['Verdana', 'Verdana'],
   ['Geist Sans', 'var(--font-geist-sans)'],
-  ['Geist Mono', 'var(--font-geist-mono)'],
+  // ['Geist Mono', 'var(--font-geist-mono)'], // Assuming Geist Mono might be causing issues, temporarily removed
   ['Roboto', 'var(--font-roboto)'],
   ['Open Sans', 'var(--font-open-sans)'],
   ['Lato', 'var(--font-lato)'],
@@ -247,7 +247,8 @@ export default function ToolbarPlugin() {
             type = 'quote';
           } else if ($isCodeNode(element)) {
             type = 'code';
-            setCodeLanguage(element.getLanguage() || getDefaultCodeLanguage());
+            const currentLanguage = element.getLanguage();
+            setCodeLanguage(currentLanguage || 'plaintext'); // if undefined, set to plaintext for select
           }
 
 
@@ -362,9 +363,7 @@ export default function ToolbarPlugin() {
         if (blockType === 'check') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
         else editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
       } else if (type === 'quote') {
-        // Placeholder for $createQuoteNode import and usage
-        // For now, using paragraph as fallback to avoid breaking if import setup is an issue
-        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode()); // Fallback for $createQuoteNode
         // Ideally: import { $createQuoteNode } from '@lexical/rich-text';
         // Then: LexicalSelectionUtil.$setBlocksType(selection, () => $createQuoteNode());
       } else if (type === 'code') {
@@ -373,7 +372,9 @@ export default function ToolbarPlugin() {
         if ($isCodeNode(topLevelElement)) {
             LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
         } else {
-            LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(codeLanguage || getDefaultCodeLanguage()));
+            // Pass undefined for language if 'plaintext' is selected, otherwise pass the language
+            const langToSet = codeLanguage === 'plaintext' ? undefined : codeLanguage;
+            LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
         }
       }
     });
@@ -381,11 +382,14 @@ export default function ToolbarPlugin() {
 
   const onCodeLanguageSelect = useCallback(
     (value: string) => {
+      setCodeLanguage(value); // Update state to reflect selection in dropdown
       editor.update(() => {
         if (selectedElementKey !== null) {
           const node = $getNodeByKey(selectedElementKey);
           if ($isCodeNode(node)) {
-            node.setLanguage(value);
+            // If "plaintext" is selected from dropdown, set language on node to undefined
+            // Otherwise, set it to the selected language value
+            node.setLanguage(value === 'plaintext' ? undefined : value);
           }
         }
       });
@@ -449,26 +453,25 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // Attempt to clear formatting. If LexicalSelectionUtil.$clearFormatting causes issues, this might need alternative.
-        // LexicalSelectionUtil.$clearFormatting(selection);
-        console.warn("LexicalSelectionUtil.$clearFormatting is currently commented out due to potential import issues. Formatting might not be fully cleared.");
-        // Fallback manual clear:
-        selection.format = 0;
-        selection.style = '';
-        LexicalSelectionUtil.$patchStyleText(selection, {
-            'font-family': 'var(--font-geist-sans)',
-            'font-size': '16px',
-            'color': 'inherit',
-            'background-color': 'transparent',
+        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues.
+        console.warn("LexicalSelectionUtil.$clearFormatting is currently commented out. Using manual clear.");
+        selection.format = 0; // Clear basic formats (bold, italic, etc.)
+        LexicalSelectionUtil.$patchStyleText(selection, { // Clear styles
+            'font-family': 'var(--font-geist-sans)', // Reset to default or desired base
+            'font-size': '16px', // Reset to default
+            'color': 'inherit', // Reset to default
+            'background-color': 'transparent', // Reset highlight
+            'text-decoration': 'none', // Remove underline/strikethrough if applied via style
           });
-        // Manually toggle off formats
-        if (isBold) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
-        if (isItalic) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
-        if (isUnderline) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
-        if (isStrikethrough) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
-        if (isCode) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
-        if (isHighlight) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
 
+        // Explicitly toggle off known formats if they were active
+        // This is a more robust way than relying on $clearFormatting if it's problematic
+        if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
+        if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+        if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
+        if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+        if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+        if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
       }
     });
   };
@@ -646,7 +649,7 @@ export default function ToolbarPlugin() {
             <SelectValue placeholder="Select language" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Plain Text</SelectItem>
+            <SelectItem value="plaintext">Plain Text</SelectItem>
             {currentCodeLanguages.map((lang) => (
               <SelectItem key={lang} value={lang}>{CODE_LANGUAGE_FRIENDLY_NAME_MAP[lang] || lang}</SelectItem>
             ))}
@@ -715,8 +718,8 @@ export default function ToolbarPlugin() {
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* Insert Dropdown */}
-      <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
-        <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
+       <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
+        <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" title="Insert">
@@ -728,7 +731,7 @@ export default function ToolbarPlugin() {
                 <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
               </DropdownMenuItem>
 
-              <DialogTrigger asChild>
+               <DialogTrigger asChild>
                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertTableDialogOpen(true); }}>
                     <TableIcon className="mr-2 h-4 w-4" /> Table
                 </DropdownMenuItem>
@@ -739,59 +742,56 @@ export default function ToolbarPlugin() {
                     <ImageIcon className="mr-2 h-4 w-4" /> Image
                 </DropdownMenuItem>
               </DialogTrigger>
-
               {/* Collapsible menu item removed */}
-              {/* 
-              <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined)}>
-                <ChevronsUpDown className="mr-2 h-4 w-4" /> Collapsible
-              </DropdownMenuItem> 
-              */}
             </DropdownMenuContent>
           </DropdownMenu>
-
           {/* Insert Table Dialog Content - must be outside DropdownMenuContent but linked by Dialog open state */}
-          <DialogContent className="sm:max-w-xs">
-            <DialogHeader>
-              <DialogTitle>Insert Table</DialogTitle>
-              <DialogDescription>Specify the number of rows and columns.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
-                <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
+          {isInsertTableDialogOpen && (
+            <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                <DialogTitle>Insert Table</DialogTitle>
+                <DialogDescription>Specify the number of rows and columns.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
+                  <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
+                  <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
+                </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
-                <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="button" onClick={handleInsertTable}>Insert</Button>
-            </DialogFooter>
-          </DialogContent>
+              <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleInsertTable}>Insert</Button>
+              </DialogFooter>
+            </DialogContent>
+          )}
 
           {/* Insert Image Dialog Content */}
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Insert Image</DialogTitle>
-              <DialogDescription>Enter image URL and alternative text.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
-                <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
+           {isInsertImageDialogOpen && (
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Insert Image</DialogTitle>
+                <DialogDescription>Enter image URL and alternative text.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
+                  <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
+                  <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text for the image" />
+                </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
-                <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text for the image" />
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="button" onClick={handleInsertImage}>Insert</Button>
-            </DialogFooter>
-          </DialogContent>
+              <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleInsertImage}>Insert</Button>
+              </DialogFooter>
+            </DialogContent>
+          )}
         </Dialog>
       </Dialog>
       {/* End Insert Dropdown Logic */}
