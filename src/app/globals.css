@@ -119,7 +119,7 @@ body {
     @apply list-disc list-inside my-2 ml-6 text-base;
   }
   .editor-listitem {
-    @apply mb-1;
+    @apply mb-1 relative pl-0; /* Adjusted for custom checkbox */
   }
   .editor-nested-listitem {
     @apply ml-6;
@@ -144,6 +144,9 @@ body {
   }
   .editor-text-code {
     @apply font-mono bg-muted px-1.5 py-0.5 rounded text-sm text-pink-600 dark:text-pink-400;
+  }
+  .editor-text-highlight { /* For default highlight format */
+    @apply bg-yellow-300 dark:bg-yellow-500 px-0.5;
   }
   .editor-code-block {
     @apply bg-muted p-3 rounded font-mono text-sm block overflow-x-auto my-2 relative;
@@ -196,5 +199,26 @@ body {
   .token.variable {
     @apply text-orange-600 dark:text-orange-400;
   }
-}
 
+  /* Checklist styles */
+  .editor-listitem-unchecked,
+  .editor-listitem-checked {
+    @apply list-none m-0 pl-6 relative; /* Use padding for checkbox space */
+  }
+  .editor-listitem-unchecked::before,
+  .editor-listitem-checked::before {
+    content: '';
+    @apply absolute left-0 top-[0.3em] w-4 h-4 border-2 border-primary rounded-sm cursor-pointer;
+  }
+  .editor-listitem-checked::before {
+    @apply bg-primary;
+  }
+  .editor-listitem-checked::after { /* Checkmark */
+    content: '';
+    @apply absolute left-[3px] top-[0.35em] w-2.5 h-1.5 border-l-2 border-b-2 border-primary-foreground transform rotate-[-45deg];
+  }
+  .editor-listitem-checked .editor-paragraph { /* Style text when checked */
+     @apply line-through text-muted-foreground;
+  }
+
+}

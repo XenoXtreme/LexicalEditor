@@ -10,9 +10,9 @@ const theme: EditorThemeClasses = {
     h1: 'editor-heading-h1',
     h2: 'editor-heading-h2',
     h3: 'editor-heading-h3',
-    h4: 'text-lg font-medium my-1.5', // Added for completeness
-    h5: 'text-base font-medium my-1', // Added for completeness
-    h6: 'text-sm font-medium my-0.5', // Added for completeness
+    h4: 'text-lg font-medium my-1.5', 
+    h5: 'text-base font-medium my-1', 
+    h6: 'text-sm font-medium my-0.5', 
   },
   list: {
     nested: {
@@ -21,10 +21,11 @@ const theme: EditorThemeClasses = {
     ol: 'editor-list-ol',
     ul: 'editor-list-ul',
     listitem: 'editor-listitem',
+    checklist: 'editor-checklist', // For checklist container if needed
     listitemChecked: 'editor-listitem-checked',
     listitemUnchecked: 'editor-listitem-unchecked',
   },
-  image: 'editor-image', // Styles for images if added
+  image: 'editor-image', 
   link: 'editor-link',
   text: {
     bold: 'editor-text-bold',
@@ -33,9 +34,10 @@ const theme: EditorThemeClasses = {
     strikethrough: 'editor-text-strikethrough',
     underlineStrikethrough: 'editor-text-underlineStrikethrough',
     code: 'editor-text-code',
+    highlight: 'editor-text-highlight', // For default highlight format
   },
-  code: 'editor-code-block', // For CodeNode
-  codeHighlight: { // For CodeHighlightNode, used by CodeHighlightPlugin
+  code: 'editor-code-block', 
+  codeHighlight: { 
     'atrule': 'text-sky-600 dark:text-sky-400',
     'attr': 'text-purple-600 dark:text-purple-400',
     'boolean': 'text-green-600 dark:text-green-400',

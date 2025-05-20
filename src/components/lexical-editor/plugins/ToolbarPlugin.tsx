@@ -15,20 +15,20 @@ import {
   $isRootOrShadowRoot,
   $createParagraphNode,
   $getNodeByKey,
-  COMMAND_PRIORITY_CRITICAL,
-  COMMAND_PRIORITY_NORMAL,
-  LexicalEditor,
+  COMMAND_PRIORITY_LOW,
   ElementFormatType,
   $getRoot,
   $createTextNode,
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
-import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
-import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, CODE_LANGUAGE_MAP, $createCodeNode } from '@lexical/code';
-import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
-import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingTagType } from '@lexical/rich-text';
+import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
+import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, /* CODE_LANGUAGE_MAP, */ $createCodeNode, getCodeLanguages, getDefaultCodeLanguage } from '@lexical/code'; // CODE_LANGUAGE_MAP removed as it's not directly used
+import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
+import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingTagType, /* QuoteNode */ } from '@lexical/rich-text'; // QuoteNode removed as $createQuoteNode is used.
+import * as LexicalSelectionUtil from '@lexical/selection';
+
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2,
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2, Palette, CaseSensitive, Eraser, Copy, FontSize, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -38,6 +38,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  // DropdownMenuSub, // Removed as not used
+  // DropdownMenuSubContent, // Removed as not used
+  // DropdownMenuSubTrigger, // Removed as not used
+  // DropdownMenuPortal, // Removed as not used
 } from '@/components/ui/dropdown-menu';
 import {
   Select,
@@ -60,10 +64,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
-import { $setBlocksType } from '@lexical/selection';
 
 
-const LowPriority = 1;
+const LowPriority = COMMAND_PRIORITY_LOW; 
 
 const supportedBlockTypes = new Set([
   'paragraph',
@@ -74,9 +77,10 @@ const supportedBlockTypes = new Set([
   'h3',
   'ul',
   'ol',
+  'check', 
 ]);
 
-const blockTypeToBlockName = {
+const blockTypeToBlockName: Record<string, string> = {
   code: 'Code Block',
   h1: 'Heading 1',
   h2: 'Heading 2',
@@ -85,7 +89,43 @@ const blockTypeToBlockName = {
   paragraph: 'Normal',
   quote: 'Quote',
   ul: 'Bulleted List',
+  check: 'Check List',
 };
+
+const FONT_FAMILY_OPTIONS: [string, string][] = [
+  ['Arial', 'Arial'],
+  ['Courier New', 'Courier New'],
+  ['Georgia', 'Georgia'],
+  ['Times New Roman', 'Times New Roman'],
+  ['Trebuchet MS', 'Trebuchet MS'],
+  ['Verdana', 'Verdana'],
+  ['Geist Sans', 'var(--font-geist-sans)'],
+  ['Geist Mono', 'var(--font-geist-mono)'],
+];
+
+const FONT_SIZE_OPTIONS: [string, string][] = [
+  ['10px', 'Small (10px)'],
+  ['12px', 'Smaller (12px)'],
+  ['14px', 'Normal (14px)'],
+  ['18px', 'Medium (18px)'],
+  ['24px', 'Large (24px)'],
+  ['36px', 'Huge (36px)'],
+];
+
+const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
+  { name: 'Default', value: 'inherit' },
+  { name: 'Black', value: 'hsl(var(--foreground))', isThemeVar: true },
+  { name: 'White', value: 'hsl(var(--background))', isThemeVar: true }, 
+  { name: 'Primary', value: 'hsl(var(--primary))', isThemeVar: true },
+  { name: 'Secondary', value: 'hsl(var(--secondary-foreground))', isThemeVar: true }, 
+  { name: 'Accent', value: 'hsl(var(--accent))', isThemeVar: true },
+  { name: 'Destructive', value: 'hsl(var(--destructive))', isThemeVar: true },
+  { name: 'Red', value: '#DB4437' },
+  { name: 'Green', value: '#0F9D58' },
+  { name: 'Blue', value: '#4285F4' }, 
+  { name: 'Yellow', value: '#F4B400' },
+];
+
 
 function getSelectedNode(selection: any) {
   const anchor = selection.anchor;
@@ -109,9 +149,11 @@ export default function ToolbarPlugin() {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [blockType, setBlockType] = useState<keyof typeof blockTypeToBlockName>('paragraph');
+  const [blockType, setBlockType] = useState<string>('paragraph');
   const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
   const [codeLanguage, setCodeLanguage] = useState('');
+  const [currentCodeLanguages, setCurrentCodeLanguages] = useState<string[]>([]);
+
 
   const [isLink, setIsLink] = useState(false);
   const [isBold, setIsBold] = useState(false);
@@ -119,12 +161,20 @@ export default function ToolbarPlugin() {
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [isCode, setIsCode] = useState(false);
+  const [isHighlight, setIsHighlight] = useState(false); 
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
+
+  const [currentFontSize, setCurrentFontSize] = useState<string>('14px');
+  const [currentFontFamily, setCurrentFontFamily] = useState<string>('Arial');
+  const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
+  const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
+
 
   const [isGenerateTextDialogOpen, setIsGenerateTextDialogOpen] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const { toast } = useToast();
+
 
   const updateToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -133,13 +183,11 @@ export default function ToolbarPlugin() {
       let element =
         anchorNode.getKey() === 'root'
           ? anchorNode
-          : $getNearestNodeOfType(anchorNode, $isRootOrShadowRoot)
-          ? anchorNode.getTopLevelElementOrThrow()
-          : anchorNode.getParent();
+          : $findMatchingParent(anchorNode, (e) => {
+              const parent = e.getParent();
+              return parent !== null && $isRootOrShadowRoot(parent);
+            }) || anchorNode.getTopLevelElementOrThrow();
 
-      if (element === null) {
-        element = anchorNode.getTopLevelElementOrThrow();
-      }
 
       const elementKey = element.getKey();
       const elementDOM = editor.getElementByKey(elementKey);
@@ -149,12 +197,7 @@ export default function ToolbarPlugin() {
       setIsUnderline(selection.hasFormat('underline'));
       setIsStrikethrough(selection.hasFormat('strikethrough'));
       setIsCode(selection.hasFormat('code'));
-      
-      const nativeSelection = window.getSelection();
-      // Ensure nativeSelection and its properties are not null before accessing
-      const formatType = element.getFormatType ? element.getFormatType() : 'left';
-      setElementFormat(formatType);
-
+      setIsHighlight(selection.hasFormat('highlight'));
 
       const node = getSelectedNode(selection);
       const parent = node.getParent();
@@ -163,29 +206,43 @@ export default function ToolbarPlugin() {
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
         if ($isListNode(element)) {
-          const parentList = $getNearestNodeOfType(anchorNode, $isListNode);
-          const type = parentList ? parentList.getListType() : element.getListType();
+          const parentList = $getNearestNodeOfType(anchorNode, ListNode);
+          const type = parentList ? parentList.getListType() : (element as ListNode).getListType();
           setBlockType(type);
         } else {
-          const type = $isHeadingNode(element)
-            ? element.getTag()
-            : $isQuoteNode(element) 
-            ? 'quote'
-            : $isCodeNode(element)
-            ? 'code'
-            : element.getType();
-          if (type in blockTypeToBlockName) {
-            setBlockType(type as keyof typeof blockTypeToBlockName);
+          let type = $isHeadingNode(element) ? element.getTag() : element.getType();
+           if ($isQuoteNode(element)) { // Using $isQuoteNode from rich-text
+            type = 'quote';
+          } else if ($isCodeNode(element)) {
+            type = 'code';
+            setCodeLanguage(element.getLanguage() || getDefaultCodeLanguage());
           }
-          if ($isCodeNode(element)) {
-            setCodeLanguage(element.getLanguage() || '');
+
+
+          if (type in blockTypeToBlockName || supportedBlockTypes.has(type)) {
+            setBlockType(type as keyof typeof blockTypeToBlockName);
+          } else {
+            setBlockType('paragraph'); 
           }
         }
       }
+      
+      if (element.getFormatType) {
+        setElementFormat(element.getFormatType());
+      } else {
+        setElementFormat('left');
+      }
+      
+      setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '14px'));
+      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', 'Arial'));
+      setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
+      setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
+
     }
   }, [editor]);
 
   useEffect(() => {
+    setCurrentCodeLanguages(getCodeLanguages());
     return mergeRegister(
       editor.registerUpdateListener(({ editorState }) => {
         editorState.read(() => {
@@ -230,36 +287,45 @@ export default function ToolbarPlugin() {
     }
   }, [editor, isLink]);
 
-  const formatBlock = (type: keyof typeof blockTypeToBlockName) => {
-    if (blockType === type && type !== 'paragraph') return; 
+  const formatBlock = (type: string) => {
+    if (blockType === type && type !== 'paragraph' && type !== 'quote') return; 
   
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
   
-      switch (type) {
-        case 'paragraph':
-          $setBlocksType(selection, () => $createParagraphNode());
-          break;
-        case 'h1':
-        case 'h2':
-        case 'h3':
-          $setBlocksType(selection, () => $createHeadingNode(type as HeadingTagType));
-          break;
-        case 'ul':
-          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-          break;
-        case 'ol':
-          editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-          break;
-        case 'quote':
-          $setBlocksType(selection, () => $createParagraphNode().setFormat('quote')); 
-          break;
-        case 'code':
-          $setBlocksType(selection, () => $createCodeNode(codeLanguage || undefined));
-          break;
-        default:
-          break;
+      if (type === 'paragraph') {
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+      } else if (type === 'h1' || type === 'h2' || type === 'h3') {
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createHeadingNode(type as HeadingTagType));
+      } else if (type === 'ul') {
+        if (blockType === 'ul') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+        else editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+      } else if (type === 'ol') {
+        if (blockType === 'ol') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+        else editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+      } else if (type === 'check') {
+        if (blockType === 'check') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+        else editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+      } else if (type === 'quote') {
+        const anchorNode = selection.anchor.getNode();
+        const topLevelElement = anchorNode.getTopLevelElementOrThrow();
+        if ($isQuoteNode(topLevelElement)) { // Using $isQuoteNode from rich-text
+            LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        } else {
+            LexicalSelectionUtil.$setBlocksType(selection, () => {
+                const quoteNode = $createQuoteNode(); // From rich-text
+                return quoteNode;
+            });
+        }
+      } else if (type === 'code') {
+        const anchorNode = selection.anchor.getNode();
+        const topLevelElement = anchorNode.getTopLevelElementOrThrow();
+        if ($isCodeNode(topLevelElement)) {
+            LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        } else {
+            LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(codeLanguage || getDefaultCodeLanguage()));
+        }
       }
     });
   };
@@ -278,11 +344,68 @@ export default function ToolbarPlugin() {
     [editor, selectedElementKey],
   );
 
-
   const formatElement = (format: ElementFormatType) => {
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, format);
-    setElementFormat(format); 
   };
+
+  const applyStyleText = useCallback(
+    (styles: Record<string, string>) => {
+      editor.update(() => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) {
+          LexicalSelectionUtil.$patchStyleText(selection, styles);
+        }
+      });
+    },
+    [editor],
+  );
+
+  const onFontFamilySelect = (family: string) => applyStyleText({ 'font-family': family });
+  const onFontSizeSelect = (size: string) => applyStyleText({ 'font-size': size });
+  const onTextColorSelect = (color: string) => applyStyleText({ color });
+  const onHighlightColorSelect = (color: string) => applyStyleText({ 'background-color': color });
+
+
+  const transformTextCase = (textCase: 'uppercase' | 'lowercase' | 'capitalize') => {
+    editor.update(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        const selectedText = selection.getTextContent();
+        let transformedText = selectedText;
+        if (textCase === 'uppercase') {
+          transformedText = selectedText.toUpperCase();
+        } else if (textCase === 'lowercase') {
+          transformedText = selectedText.toLowerCase();
+        } else if (textCase === 'capitalize') {
+          transformedText = selectedText.replace(/\b\w/g, char => char.toUpperCase());
+        }
+        selection.insertText(transformedText);
+      }
+    });
+  };
+
+  const clearFormatting = () => {
+    editor.update(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        LexicalSelectionUtil.$clearFormatting(selection);
+      }
+    });
+  };
+
+  const copyCodeContent = useCallback(() => {
+    if (blockType === 'code' && selectedElementKey) {
+      editor.getEditorState().read(() => {
+        const codeNode = $getNodeByKey(selectedElementKey);
+        if ($isCodeNode(codeNode)) {
+          navigator.clipboard.writeText(codeNode.getTextContent())
+            .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
+            .catch(err => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy code to clipboard." }));
+        }
+      });
+    }
+  }, [editor, blockType, selectedElementKey, toast]);
+
 
   const handleGenerateText = async () => {
     if (!generationPrompt.trim() || isGeneratingText) return;
@@ -297,17 +420,17 @@ export default function ToolbarPlugin() {
       if (result && result.generatedText) {
         generatedTextContent = result.generatedText; 
         
-        editor.focus(
+        editor.focus( 
           () => { 
             if (generatedTextContent !== null) { 
               editor.update(() => {
                 const selection = $getSelection();
                 if ($isRangeSelection(selection)) {
-                  selection.insertText(generatedTextContent!);
+                  selection.insertText(generatedTextContent!); 
                 } else {
                   const root = $getRoot();
                   const paragraph = $createParagraphNode();
-                  paragraph.append($createTextNode(generatedTextContent!));
+                  paragraph.append($createTextNode(generatedTextContent!)); 
                   root.append(paragraph);
                   paragraph.selectEnd(); 
                 }
@@ -322,17 +445,19 @@ export default function ToolbarPlugin() {
         });
       } else if (result && result.generatedText === "") {
         toast({
-          variant: "default",
+          variant: "default", 
           title: "AI Response",
           description: "The AI returned an empty response. This might be due to content filters or the nature of the prompt.",
         });
-      } else {
+      }
+       else {
         throw new Error("AI returned an unexpected or empty response.");
       }
     } catch (error) {
       console.error("AI Text Generation error:", error);
       let title = "AI Text Generation Failed";
       let description = "An unexpected error occurred.";
+
       if (error instanceof Error) {
         if (error.message.includes("429 Too Many Requests")) {
           title = "AI Rate Limit Exceeded";
@@ -340,10 +465,12 @@ export default function ToolbarPlugin() {
         } else if (error.message.includes("Candidate was blocked due to SAFETY")) {
             title = "Content Generation Blocked";
             description = "The AI could not generate text for this prompt due to safety filters. Please try a different prompt.";
-        } else {
-          description = error.message;
+        }
+         else {
+          description = error.message || "Failed to generate text. Please check console for details.";
         }
       }
+      
       toast({
         variant: "destructive",
         title: title,
@@ -351,102 +478,200 @@ export default function ToolbarPlugin() {
       });
     } finally {
       setIsGeneratingText(false);
-      // User can manually close dialog or clear prompt
-      // setIsGenerateTextDialogOpen(false); 
-      // setGenerationPrompt(''); 
     }
   };
 
 
   return (
     <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1">
-      <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo">
+      <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo (Ctrl+Z)">
         <Undo className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" disabled={!canRedo} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="Redo">
+      <Button variant="ghost" size="icon" disabled={!canRedo} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="Redo" title="Redo (Ctrl+Y)">
         <Redo className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-3 h-9">
-            {blockTypeToBlockName[blockType] || 'Block Type'}
+          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Block Type">
+             {blockTypeToBlockName[blockType] || 'Block Type'}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => formatBlock('paragraph')} className={blockType === 'paragraph' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('paragraph')} className={blockType === 'paragraph' ? 'bg-accent text-accent-foreground' : ''}>
             <Pilcrow className="mr-2 h-4 w-4" /> Normal
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatBlock('h1')} className={blockType === 'h1' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h1')} className={blockType === 'h1' ? 'bg-accent text-accent-foreground' : ''}>
             <Heading1 className="mr-2 h-4 w-4" /> Heading 1
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatBlock('h2')} className={blockType === 'h2' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h2')} className={blockType === 'h2' ? 'bg-accent text-accent-foreground' : ''}>
             <Heading2 className="mr-2 h-4 w-4" /> Heading 2
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatBlock('h3')} className={blockType === 'h3' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h3')} className={blockType === 'h3' ? 'bg-accent text-accent-foreground' : ''}>
             <Heading3 className="mr-2 h-4 w-4" /> Heading 3
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => formatBlock('ul')} className={blockType === 'ul' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('ul')} className={blockType === 'ul' ? 'bg-accent text-accent-foreground' : ''}>
             <List className="mr-2 h-4 w-4" /> Bullet List
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatBlock('ol')} className={blockType === 'ol' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('ol')} className={blockType === 'ol' ? 'bg-accent text-accent-foreground' : ''}>
             <ListOrdered className="mr-2 h-4 w-4" /> Numbered List
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => formatBlock('check')} className={blockType === 'check' ? 'bg-accent text-accent-foreground' : ''}>
+            <ListChecks className="mr-2 h-4 w-4" /> Check List
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => formatBlock('quote')} className={blockType === 'quote' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('quote')} className={blockType === 'quote' ? 'bg-accent text-accent-foreground' : ''}>
             <Quote className="mr-2 h-4 w-4" /> Quote
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatBlock('code')} className={blockType === 'code' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('code')} className={blockType === 'code' ? 'bg-accent text-accent-foreground' : ''}>
             <Code className="mr-2 h-4 w-4" /> Code Block
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       
       {blockType === 'code' && (
+        <>
          <Select value={codeLanguage} onValueChange={onCodeLanguageSelect}>
-          <SelectTrigger className="w-[150px] h-9 ml-1">
+          <SelectTrigger className="w-[150px] h-9 ml-1" title="Select Code Language">
             <SelectValue placeholder="Select language" />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(CODE_LANGUAGE_FRIENDLY_NAME_MAP).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
+            <SelectItem value="">Plain Text</SelectItem>
+            {currentCodeLanguages.map((lang) => (
+              <SelectItem key={lang} value={lang}>{CODE_LANGUAGE_FRIENDLY_NAME_MAP[lang] || lang}</SelectItem>
             ))}
-             <SelectItem value="">plain</SelectItem> {/* For plain text in code block */}
           </SelectContent>
         </Select>
+        <Button variant="ghost" size="icon" onClick={copyCodeContent} aria-label="Copy Code" title="Copy Code Block Content">
+            <Copy className="h-4 w-4" />
+        </Button>
+        </>
       )}
-
       <Separator orientation="vertical" className="h-6 mx-1" />
-      <Button variant={isBold ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} aria-label="Format Bold">
+
+       <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Font Family">
+            {FONT_FAMILY_OPTIONS.find(opt => opt[1] === currentFontFamily)?.[0] || FONT_FAMILY_OPTIONS.find(opt => opt[0] === currentFontFamily)?.[0] || 'Font'}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {FONT_FAMILY_OPTIONS.map(([label, value]) => (
+            <DropdownMenuItem key={value} onClick={() => onFontFamilySelect(value)} className={currentFontFamily === value ? 'bg-accent text-accent-foreground' : ''} style={{fontFamily: value}}>
+              {label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Font Size">
+           {FONT_SIZE_OPTIONS.find(opt => opt[0] === currentFontSize)?.[1] || currentFontSize}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {FONT_SIZE_OPTIONS.map(([value, label]) => (
+            <DropdownMenuItem key={value} onClick={() => onFontSizeSelect(value)} className={currentFontSize === value ? 'bg-accent text-accent-foreground' : ''}>
+              {label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+
+
+      <Button variant={isBold ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} aria-label="Format Bold" title="Bold (Ctrl+B)">
         <Bold className="h-4 w-4" />
       </Button>
-      <Button variant={isItalic ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} aria-label="Format Italic">
+      <Button variant={isItalic ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} aria-label="Format Italic" title="Italic (Ctrl+I)">
         <Italic className="h-4 w-4" />
       </Button>
-      <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline">
+      <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
         <Underline className="h-4 w-4" />
       </Button>
-      <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough">
+      <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
         <Strikethrough className="h-4 w-4" />
       </Button>
-      <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code">
+       <Button variant={isHighlight ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')} aria-label="Highlight Text" title="Highlight Text (Default Yellow)">
+        <Highlighter className="h-4 w-4" />
+      </Button>
+      <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
         <Code className="h-4 w-4" />
       </Button>
-      <Button variant={isLink ? 'secondary' : 'ghost'} size="icon" onClick={insertLink} aria-label="Insert Link">
+      <Button variant={isLink ? 'secondary' : 'ghost'} size="icon" onClick={insertLink} aria-label="Insert Link" title="Insert/Edit Link">
         <Link2 className="h-4 w-4" />
       </Button>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Text Color">
+            <Palette className="h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor === 'hsl(var(--foreground))' ? 'currentColor' : currentTextColor }} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-48">
+          {COLOR_PALETTE.map(color => (
+            <DropdownMenuItem key={color.name} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+              {color.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Background Color (Highlight)">
+            <Baseline className="h-4 w-4" style={{ color: currentHighlightColor === 'transparent' || currentHighlightColor === 'inherit' ? 'currentColor' : 'hsl(var(--accent))', fillOpacity: currentHighlightColor !== 'transparent' && currentHighlightColor !== 'inherit' ? 0.5 : 0 }}/>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-48">
+           <DropdownMenuItem onClick={() => onHighlightColorSelect('transparent')} className={currentHighlightColor === 'transparent' ? 'bg-accent text-accent-foreground' : ''}>
+             <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
+              None (Transparent)
+            </DropdownMenuItem>
+          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( 
+            <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+              {color.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+       <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Change Case">
+            <CaseSensitive className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
+            <CaseLower className="mr-2 h-4 w-4" /> lowercase
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
+            <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
+            <PilcrowSquare className="mr-2 h-4 w-4" /> Capitalize Case
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button variant="ghost" size="icon" onClick={clearFormatting} aria-label="Clear Formatting" title="Clear Formatting">
+        <Eraser className="h-4 w-4" />
+      </Button>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+
 
       <Dialog open={isGenerateTextDialogOpen} onOpenChange={(open) => {
-        if (!open) { 
-          // setGenerationPrompt(''); // Keep prompt on manual close
-          // setIsGeneratingText(false); // Should be handled by generation logic
-        }
         setIsGenerateTextDialogOpen(open);
       }}>
         <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Generate Text with AI">
+          <Button variant="ghost" size="icon" aria-label="Generate Text with AI" title="Generate Text with AI">
             <Sparkles className="h-4 w-4" />
           </Button>
         </DialogTrigger>
@@ -467,7 +692,7 @@ export default function ToolbarPlugin() {
                 value={generationPrompt}
                 onChange={(e) => setGenerationPrompt(e.target.value)}
                 className="col-span-3"
-                placeholder="e.g., Write a short story about a brave knight..."
+                placeholder="e.g., Write a short story about..."
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && generationPrompt.trim()) {
                     e.preventDefault();
@@ -495,18 +720,19 @@ export default function ToolbarPlugin() {
       </Dialog>
 
       <Separator orientation="vertical" className="h-6 mx-1" />
-      <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left">
+      <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left" title="Align Left">
         <AlignLeft className="h-4 w-4" />
       </Button>
-      <Button variant={elementFormat === 'center' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('center')} aria-label="Align Center">
+      <Button variant={elementFormat === 'center' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('center')} aria-label="Align Center" title="Align Center">
         <AlignCenter className="h-4 w-4" />
       </Button>
-      <Button variant={elementFormat === 'right' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('right')} aria-label="Align Right">
+      <Button variant={elementFormat === 'right' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('right')} aria-label="Align Right" title="Align Right">
         <AlignRight className="h-4 w-4" />
       </Button>
-      <Button variant={elementFormat === 'justify' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('justify')} aria-label="Align Justify">
+      <Button variant={elementFormat === 'justify' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('justify')} aria-label="Align Justify" title="Align Justify">
         <AlignJustify className="h-4 w-4" />
       </Button>
     </div>
   );
 }
+
