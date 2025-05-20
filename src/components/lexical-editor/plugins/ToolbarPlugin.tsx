@@ -33,11 +33,11 @@ import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace i
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-import { INSERT_EQUATION_COMMAND } from './EquationPlugin'; // Added Equation command
+import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin'; 
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator // Calculator icon added
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -161,13 +161,13 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType, shortcut?: string }[] = [
-  { value: 'left', label: 'Left Align', icon: AlignLeft, shortcut: 'Ctrl+Shift+L' },
-  { value: 'center', label: 'Center Align', icon: AlignCenter, shortcut: 'Ctrl+Shift+E' },
-  { value: 'right', label: 'Right Align', icon: AlignRight, shortcut: 'Ctrl+Shift+R' },
-  { value: 'justify', label: 'Justify Align', icon: AlignJustify, shortcut: 'Ctrl+Shift+J' },
-  { value: 'start', label: 'Start Align', icon: AlignLeft }, // Icon remains AlignLeft for LTR
-  { value: 'end', label: 'End Align', icon: AlignRight },   // Icon remains AlignRight for LTR
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType }[] = [
+  { value: 'left', label: 'Left Align', icon: AlignLeft },
+  { value: 'center', label: 'Center Align', icon: AlignCenter },
+  { value: 'right', label: 'Right Align', icon: AlignRight },
+  { value: 'justify', label: 'Justify Align', icon: AlignJustify },
+  { value: 'start', label: 'Start Align', icon: AlignLeft }, 
+  { value: 'end', label: 'End Align', icon: AlignRight },   
 ];
 
 
@@ -233,60 +233,22 @@ export default function ToolbarPlugin() {
     const selection = $getSelection();
     if ($isRangeSelection(selection)) {
       const anchorNode = selection.anchor.getNode();
-      
-      // Parent List Item / List
-      const listItemNode = $getNearestNodeOfType(anchorNode, $isListItemNode);
-      const parentList = listItemNode ? $getNearestNodeOfType(listItemNode, $isListNode) : null;
-
-      if (parentList && $isListNode(parentList)) { // Ensure parentList is a ListNode
-        const listType = parentList.getListType();
-        setBlockType(listType); 
-         setSelectedElementKey(parentList.getKey());
-         if (typeof (parentList as any).getFormatType === 'function') { // Check if list node supports format
-            setElementFormat((parentList as any).getFormatType());
-          } else {
-            setElementFormat('left'); 
-          }
-      } else {
-          // Not in a list, check top-level element
-          let topLevelElement = anchorNode.getTopLevelElement();
-          if (!topLevelElement) {
-            topLevelElement = $findMatchingParent(anchorNode, (e) => {
+      let element =
+        anchorNode.getKey() === 'root'
+          ? anchorNode
+          : $findMatchingParent(anchorNode, (e) => {
               const parent = e.getParent();
               return parent !== null && $isRootOrShadowRoot(parent);
             });
-          }
-          if (!topLevelElement) { 
-            topLevelElement = anchorNode;
-          }
-          
-          if (topLevelElement) {
-              setSelectedElementKey(topLevelElement.getKey());
-              if (typeof (topLevelElement as any).getFormatType === 'function') {
-                setElementFormat((topLevelElement as any).getFormatType());
-              } else {
-                setElementFormat('left'); 
-              }
 
-              if ($isHeadingNode(topLevelElement)) {
-                setBlockType(topLevelElement.getTag());
-              } else if (isQuoteNodeLexical(topLevelElement)) {
-                setBlockType('quote');
-              } else if ($isCodeNode(topLevelElement)) {
-                setBlockType('code');
-                const lang = topLevelElement.getLanguage();
-                setCodeLanguage(lang || getDefaultCodeLanguage() || 'plaintext');
-              } else {
-                setBlockType('paragraph');
-              }
-          } else {
-            setSelectedElementKey(null);
-            setElementFormat('left');
-            setBlockType('paragraph');
-          }
+      if (element === null) {
+        element = anchorNode.getTopLevelElementOrThrow();
       }
+      
+      const elementKey = element.getKey();
+      const elementDOM = editor.getElementByKey(elementKey);
 
-
+      // Update text format
       setIsBold(selection.hasFormat('bold'));
       setIsItalic(selection.hasFormat('italic'));
       setIsUnderline(selection.hasFormat('underline'));
@@ -294,16 +256,70 @@ export default function ToolbarPlugin() {
       setIsCode(selection.hasFormat('code'));
       setIsHighlight(selection.hasFormat('highlight'));
 
+      // Update links
       const node = getSelectedNode(selection);
       const parent = node.getParent();
-      setIsLink($isLinkNode(parent) || $isLinkNode(node));
+      if ($isLinkNode(parent) || $isLinkNode(node)) {
+        setIsLink(true);
+      } else {
+        setIsLink(false);
+      }
       
+      // Update block type
+      if (elementDOM !== null) {
+        setSelectedElementKey(elementKey);
+        if ($isListNode(element)) {
+          const parentList = $getNearestNodeOfType<ListNode>(
+            anchorNode,
+            ListNode,
+          );
+          const type = parentList
+            ? parentList.getListType()
+            : element.getListType();
+          setBlockType(type);
+        } else {
+          const type = $isHeadingNode(element)
+            ? element.getTag()
+            : element.getType();
+          if (type in blockTypeToBlockName) {
+            setBlockType(type);
+          }
+          if ($isCodeNode(element)) {
+            const language =
+              element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
+            setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext'); // Ensure code language is set if it's a code block
+            return;
+          }
+        }
+      }
+      
+      // Handle buttons commands
+      let matchingParent = $findMatchingParent(
+        anchorNode,
+        (node) => $isCodeNode(node) || $isListNode(node)
+      );
+      if(matchingParent && $isCodeNode(matchingParent)){
+        setCodeLanguage(matchingParent.getLanguage() || getDefaultCodeLanguage() || 'plaintext');
+      }
+
 
       setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '16px'));
       setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `var(--font-roboto), sans-serif`));
       setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
       setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
-
+      
+      // Element format (alignment)
+      if (typeof (element as any).getFormatType === 'function') {
+        setElementFormat((element as any).getFormatType());
+      } else {
+        // Fallback for nodes that might not have getFormatType, e.g., root or simple paragraphs
+        let parentWithFormat = $findMatchingParent(anchorNode, (n) => typeof (n as any).getFormatType === 'function');
+        if (parentWithFormat && typeof (parentWithFormat as any).getFormatType === 'function') {
+          setElementFormat((parentWithFormat as any).getFormatType());
+        } else {
+          setElementFormat('left'); // Default alignment
+        }
+      }
     }
   }, [editor]);
 
@@ -366,45 +382,78 @@ export default function ToolbarPlugin() {
     editor.update(() => {
         const selection = $getSelection();
         let existingUrl = '';
+        let isCurrentlyLink = false;
+
         if ($isRangeSelection(selection)) {
             const node = getSelectedNode(selection);
             const parent = node.getParent();
             if ($isLinkNode(parent)) {
                 existingUrl = parent.getURL();
+                isCurrentlyLink = true;
             } else if ($isLinkNode(node)) {
                 existingUrl = node.getURL();
+                isCurrentlyLink = true;
             }
         }
 
-        const url = window.prompt(isLink ? 'Edit link URL (leave empty to remove):' : 'Enter link URL:', existingUrl || 'https://');
+        const url = window.prompt(isCurrentlyLink ? 'Edit link URL (leave empty to remove):' : 'Enter link URL:', existingUrl || 'https://');
         
         if (url === null) { 
             return; // User cancelled
         }
-        if (url === '') { 
+        if (url === '' && isCurrentlyLink) { 
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, null); // Remove link
-        } else {
+        } else if (url !== '') {
             // Ensure protocol is present if not already
             const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
         }
     });
-}, [editor, isLink]);
+}, [editor]);
 
   const formatBlock = (type: string) => {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
       
-      const currentBlockTypeIsList = ['ul', 'ol', 'check'].includes(blockType);
+      const currentBlockIsList = ['ul', 'ol', 'check'].includes(blockType);
 
-      if (blockType === type && currentBlockTypeIsList) {
+      // If trying to apply the same list type again, or paragraph to a list, remove list
+      if ((blockType === type && currentBlockIsList) || (type === 'paragraph' && currentBlockIsList)) {
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+        if (type !== 'paragraph') { // If it wasn't specifically to turn into paragraph, re-apply intended format after removing list
+           // This timeout helps ensure the REMOVE_LIST_COMMAND processes before the new format is applied
+           setTimeout(() => {
+            editor.update(() => {
+                const newSelection = $getSelection();
+                if ($isRangeSelection(newSelection)) { // Re-fetch selection
+                     applySpecificBlockFormat(type, newSelection);
+                }
+            });
+           }, 0);
+        }
         return;
       }
+      // If switching from one list type to another, or list to non-list (and not paragraph)
+      if (currentBlockIsList && type !== 'paragraph' && !['ul', 'ol', 'check'].includes(type)) {
+         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+         setTimeout(() => {
+            editor.update(() => {
+                const newSelection = $getSelection();
+                if ($isRangeSelection(newSelection)) {
+                     applySpecificBlockFormat(type, newSelection);
+                }
+            });
+           }, 0);
+        return;
+      }
+      
+      applySpecificBlockFormat(type, selection);
+    });
+  };
 
-
-      if (type === 'paragraph') {
+  const applySpecificBlockFormat = (type: string, selection: any) => { // selection type any for broader compatibility
+     if (type === 'paragraph') {
         LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
       } else if (type === 'h1' || type === 'h2' || type === 'h3') {
         LexicalSelectionUtil.$setBlocksType(selection, () => $createHeadingNode(type as HeadingTagType));
@@ -420,14 +469,13 @@ export default function ToolbarPlugin() {
         const langToSet = codeLanguage === 'plaintext' ? undefined : codeLanguage;
         LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
       }
-    });
-  };
+  }
 
   const onCodeLanguageSelect = useCallback(
     (value: string) => {
       editor.update(() => {
         const langToSet = value === 'plaintext' ? undefined : value;
-        setCodeLanguage(value); 
+        // setCodeLanguage(value); // This state will be updated by updateToolbar based on node
         
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
@@ -436,7 +484,10 @@ export default function ToolbarPlugin() {
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet);
             } else if (blockType === 'code') { 
-                 LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet));
+                 // This case might be redundant if updateToolbar sets blockType correctly
+                 // And then formatBlock('code') would be called which uses the current codeLanguage state.
+                 // Direct application here can be complex if selection isn't directly in a code block yet.
+                 // Relying on formatBlock after setting codeLanguage state is safer.
             }
         }
       });
@@ -454,7 +505,7 @@ export default function ToolbarPlugin() {
     } else {
         effectiveFormat = format as ElementFormatType;
     }
-    setElementFormat(effectiveFormat); 
+    // setElementFormat(effectiveFormat); // State updated by updateToolbar
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, effectiveFormat);
   };
 
@@ -471,19 +522,19 @@ export default function ToolbarPlugin() {
   );
 
   const onFontFamilySelect = (family: string) => {
-    setCurrentFontFamily(family);
+    // setCurrentFontFamily(family); // State updated by updateToolbar
     applyStyleText({ 'font-family': family });
   }
   const onFontSizeSelect = (size: string) => {
-    setCurrentFontSize(size);
+    // setCurrentFontSize(size); // State updated by updateToolbar
     applyStyleText({ 'font-size': size });
   }
   const onTextColorSelect = (color: string) => {
-    setCurrentTextColor(color);
+    // setCurrentTextColor(color); // State updated by updateToolbar
     applyStyleText({ color });
   }
   const onHighlightColorSelect = (color: string) => {
-    setCurrentHighlightColor(color);
+    // setCurrentHighlightColor(color); // State updated by updateToolbar
     applyStyleText({ 'background-color': color });
   }
 
@@ -511,8 +562,7 @@ export default function ToolbarPlugin() {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
         // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues
-        // Manual style reset as a workaround:
-        console.warn("$clearFormatting from @lexical/selection is currently commented out due to persistent build issues. Attempting manual style reset.");
+        console.warn("$clearFormatting from @lexical/selection is currently commented out. Attempting manual style reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
           'font-family': `var(--font-roboto), sans-serif`, 
@@ -523,9 +573,7 @@ export default function ToolbarPlugin() {
           'font-style': '',                  
           'text-decoration': '',             
         });
-        // selection.removeText(); // This might be too aggressive, removes the text itself.
         
-        // Attempt to reset block type to paragraph if it's a special block
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
             const parent = e.getParent();
@@ -638,7 +686,7 @@ export default function ToolbarPlugin() {
 
 
   return (
-    <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1">
+    <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1 text-sm sm:text-base">
       <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo (Ctrl+Z)">
         <Undo className="h-4 w-4" />
       </Button>
@@ -649,8 +697,8 @@ export default function ToolbarPlugin() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Block Type">
-             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[70px]">{blockTypeToBlockName[blockType] || 'Normal'}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+          <Button variant="ghost" className="px-2 h-9 min-w-[100px] sm:min-w-[120px] text-xs sm:text-sm justify-start" title="Block Type">
+             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[50px] sm:w-[70px]">{blockTypeToBlockName[blockType] || 'Normal'}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -689,7 +737,7 @@ export default function ToolbarPlugin() {
       {blockType === 'code' && (
         <>
          <Select value={codeLanguage} onValueChange={onCodeLanguageSelect}>
-          <SelectTrigger className="w-[140px] h-9 ml-1 text-xs" title="Select Code Language">
+          <SelectTrigger className="w-[120px] sm:w-[140px] h-9 ml-1 text-xs" title="Select Code Language">
             <SelectValue placeholder="Language" />
           </SelectTrigger>
           <SelectContent>
@@ -706,7 +754,7 @@ export default function ToolbarPlugin() {
       )}
 
       <Select value={currentFontFamily} onValueChange={onFontFamilySelect}>
-        <SelectTrigger className="w-[120px] h-9 text-sm px-2" title="Font Family">
+        <SelectTrigger className="w-[100px] sm:w-[120px] h-9 text-xs sm:text-sm px-2" title="Font Family">
           <Type className="mr-1 h-4 w-4 shrink-0" />
           <SelectValue placeholder="Font" />
         </SelectTrigger>
@@ -720,7 +768,7 @@ export default function ToolbarPlugin() {
       </Select>
 
       <Select value={currentFontSize} onValueChange={onFontSizeSelect}>
-        <SelectTrigger className="w-[80px] h-9 text-sm px-2" title="Font Size">
+        <SelectTrigger className="w-[70px] sm:w-[80px] h-9 text-xs sm:text-sm px-2" title="Font Size">
            <span className="truncate">{getNumericFontSize(currentFontSize)}</span>
         </SelectTrigger>
         <SelectContent>
@@ -852,7 +900,7 @@ export default function ToolbarPlugin() {
       }}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="px-2 h-9 text-sm justify-start" title="Insert">
+            <Button variant="ghost" className="px-2 h-9 text-xs sm:text-sm justify-start" title="Insert">
               <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
             </Button>
           </DropdownMenuTrigger>
@@ -924,32 +972,31 @@ export default function ToolbarPlugin() {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Alignment">
-            <currentAlignmentOption.icon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[70px]">{currentAlignmentOption.label}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+          <Button variant="ghost" className="px-2 h-9 min-w-[100px] sm:min-w-[120px] text-xs sm:text-sm justify-start" title="Alignment">
+            <currentAlignmentOption.icon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[50px] sm:w-[70px]">{currentAlignmentOption.label}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56">
           {ALIGNMENT_OPTIONS.filter(opt => ['left', 'center', 'right', 'justify'].includes(opt.value)).map(opt => ( 
             <DropdownMenuItem
               key={opt.value}
-              onClick={() => formatElement(opt.value)}
-              className={elementFormat === opt.value || (opt.value === 'start' && elementFormat === 'left') || (opt.value === 'end' && elementFormat === 'right') ? 'bg-accent text-accent-foreground' : ''}
+              onClick={() => formatElement(opt.value as ElementFormatType)}
+              className={elementFormat === opt.value ? 'bg-accent text-accent-foreground' : ''}
             >
               <opt.icon className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">{opt.label}</span>
-              {opt.shortcut && <span className="text-xs text-muted-foreground ml-auto">{opt.shortcut}</span>}
             </DropdownMenuItem>
           ))}
            <DropdownMenuItem
               onClick={() => formatElement('start')}
-              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''} 
+              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''}  // 'start' effectively means 'left' in LTR
             >
               <AlignLeft className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Start Align</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => formatElement('end')}
-              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} 
+              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} // 'end' effectively means 'right' in LTR
             >
               <AlignRight className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">End Align</span>
@@ -958,12 +1005,10 @@ export default function ToolbarPlugin() {
            <DropdownMenuItem onClick={() => editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)}>
               <Outdent className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Outdent</span>
-              <span className="text-xs text-muted-foreground ml-auto">Ctrl+[</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined)}>
               <Indent className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Indent</span>
-              <span className="text-xs text-muted-foreground ml-auto">Ctrl+]</span>
             </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -971,3 +1016,4 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 
 "use client";
-import * as React from 'react'; // Added React import
+import * as React from 'react'; 
 import type { LexicalEditor } from 'lexical';
 import {
   $getSelection,
@@ -31,6 +31,7 @@ import {
   Minus,
   ImageIcon,
   TableIcon,
+  Calculator, // Added Calculator icon
 } from 'lucide-react';
 import {
   INSERT_ORDERED_LIST_COMMAND,
@@ -41,17 +42,14 @@ import { $createHeadingNode, $isHeadingNode, $createQuoteNode } from '@lexical/r
 import { $createCodeNode } from '@lexical/code';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { INSERT_IMAGE_COMMAND } from './ToolbarPlugin';
+import { INSERT_IMAGE_COMMAND } from './ToolbarPlugin'; // Assuming ToolbarPlugin exports this
+import { INSERT_EQUATION_COMMAND } from './EquationPlugin'; // Assuming EquationPlugin exports this
 import { $setBlocksType } from '@lexical/selection';
 
 
 const ANKER_HIDE_TIMEOUT = 100; // ms to hide anker if conditions no longer met
 
-// AnkerButton no longer needs a custom onClick prop for opening the popover.
-// It forwards props from PopoverTrigger.
-interface AnkerButtonProps extends React.ComponentPropsWithoutRef<typeof Button> {
-  // editor prop removed as it's not directly used by AnkerButton's rendering logic
-}
+interface AnkerButtonProps extends React.ComponentPropsWithoutRef<typeof Button> {}
 
 const AnkerButton = React.forwardRef<HTMLButtonElement, AnkerButtonProps>(
   (props, ref) => {
@@ -61,15 +59,14 @@ const AnkerButton = React.forwardRef<HTMLButtonElement, AnkerButtonProps>(
         variant="ghost"
         size="icon"
         onMouseDown={(e) => {
-          e.preventDefault(); // Retain to prevent editor blur
-          // If PopoverTrigger passes its own onMouseDown, chain it.
+          e.preventDefault(); 
           if (props.onMouseDown) {
             props.onMouseDown(e);
           }
         }}
         aria-label="Insert block"
         title="Insert block"
-        {...props} // Spread all other props from PopoverTrigger (like its onClick)
+        {...props} 
       >
         <Plus className="h-5 w-5" />
       </Button>
@@ -182,7 +179,8 @@ const getBlockMenuItems = (editor: LexicalEditor): BlockMenuItem[] => [
     label: 'Image',
     icon: ImageIcon,
     action: () => {
-      const src = 'https://placehold.co/600x400.png';
+      // For quick insert, use a placeholder. More options available via main toolbar.
+      const src = 'https://placehold.co/600x400.png'; 
       const altText = 'placeholder image';
       editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText, width: 400, height: 300 });
     },
@@ -191,7 +189,15 @@ const getBlockMenuItems = (editor: LexicalEditor): BlockMenuItem[] => [
     label: 'Table',
     icon: TableIcon,
     action: () => {
+      // For quick insert, use default 3x3. More options via main toolbar.
       editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3' });
+    },
+  },
+  {
+    label: 'Equation',
+    icon: Calculator,
+    action: () => {
+      editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
     },
   },
 ];
@@ -208,7 +214,7 @@ export default function BlockAnkerPlugin() {
     editor.getEditorState().read(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-        if (!isMenuOpen) setShowAnker(false); // Hide anker if menu is not open and selection changed
+        if (!isMenuOpen) setShowAnker(false); 
         return;
       }
 
@@ -226,6 +232,7 @@ export default function BlockAnkerPlugin() {
           if (editorRootRect) {
              setAnkerPosition({
                 top: rect.top - editorRootRect.top + window.scrollY,
+                // Position to the left of the line, adjust -30 as needed for visual preference
                 left: rect.left - editorRootRect.left - 30 + window.scrollX, 
              });
              setShowAnker(true);
@@ -237,7 +244,7 @@ export default function BlockAnkerPlugin() {
       
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = setTimeout(() => {
-        if (!isMenuOpen) { // Only hide anker if menu is not actively open
+        if (!isMenuOpen) { 
           setShowAnker(false);
         }
       }, ANKER_HIDE_TIMEOUT);
@@ -258,23 +265,27 @@ export default function BlockAnkerPlugin() {
   }, [editor, updateAnkerPosition]);
   
   useEffect(() => {
-    const handleScroll = () => {
-      if (showAnker || isMenuOpen) { // Update position if anker is shown or menu is open
+    const handleScrollAndResize = () => {
+      if (showAnker || isMenuOpen) { 
         updateAnkerPosition();
-         if (isMenuOpen) setIsMenuOpen(false); 
+         if (isMenuOpen) { // If menu is open and user scrolls/resizes, close it to avoid misplacement
+            setIsMenuOpen(false); 
+         }
       }
     };
-    window.addEventListener('scroll', handleScroll, true); 
-    return () => window.removeEventListener('scroll', handleScroll, true);
+    window.addEventListener('scroll', handleScrollAndResize, true); 
+    window.addEventListener('resize', handleScrollAndResize, true);
+    return () => {
+      window.removeEventListener('scroll', handleScrollAndResize, true);
+      window.removeEventListener('resize', handleScrollAndResize, true);
+    }
   }, [editor, showAnker, updateAnkerPosition, isMenuOpen]);
 
 
-  // Render Popover and Trigger if anker should be shown OR if menu is already open
-  // This allows the PopoverTrigger to remain interactive for Radix while the menu is open
   const shouldRenderPopover = showAnker || isMenuOpen;
 
 
-  if (!shouldRenderPopover) { 
+  if (!shouldRenderPopover && !isMenuOpen) { // Ensure popover trigger isn't rendered if not needed and menu isn't open
     return null;
   }
 
@@ -289,17 +300,17 @@ export default function BlockAnkerPlugin() {
       <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
         <PopoverTrigger asChild>
           <AnkerButton
-            className={showAnker || isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} 
+            className={(showAnker || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'} 
           />
         </PopoverTrigger>
         <PopoverContent 
-            className="w-60 p-1"
+            className="w-full sm:w-60 p-1" // Responsive width for popover
             side="right"
             align="start"
             sideOffset={5}
-            onCloseAutoFocus={(e) => e.preventDefault()} // Prevent editor focus steal on close
+            onCloseAutoFocus={(e) => e.preventDefault()} 
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col max-h-[300px] overflow-y-auto"> {/* Scrollable menu */}
             <p className="p-2 text-xs font-semibold text-muted-foreground">INSERT BLOCKS</p>
             {menuItems.map((item) => (
               <Button
@@ -307,9 +318,9 @@ export default function BlockAnkerPlugin() {
                 variant="ghost"
                 className="w-full justify-start h-8 px-2 text-sm"
                 onMouseDown={(e) => { 
-                    e.preventDefault(); // Prevent focus steal from editor when clicking menu item
+                    e.preventDefault(); 
                     item.action(editor);
-                    setIsMenuOpen(false); // Close menu after action
+                    setIsMenuOpen(false); 
                 }}
               >
                 <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -322,5 +333,3 @@ export default function BlockAnkerPlugin() {
     </div>
   );
 }
-
-    
