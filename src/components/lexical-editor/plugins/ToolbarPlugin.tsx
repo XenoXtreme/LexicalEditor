@@ -24,7 +24,7 @@ import {
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
-import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, /* CODE_LANGUAGE_MAP, */ $createCodeNode, getCodeLanguages, getDefaultCodeLanguage } from '@lexical/code'; // CODE_LANGUAGE_MAP removed as it's not directly used
+import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, /* CODE_LANGUAGE_MAP, */ $createCodeNode, getCodeLanguages, getDefaultCodeLanguage, CodeNode } from '@lexical/code'; // CODE_LANGUAGE_MAP removed as it's not directly used
 import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
 import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as isQuoteNodeLexical, HeadingTagType /* QuoteNode removed */ } from '@lexical/rich-text';
 import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace import
@@ -37,7 +37,7 @@ import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -480,9 +480,9 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
             const node = getSelectedNode(selection);
-            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode); 
+            const codeBlockNode = $getNearestNodeOfType(node, CodeNode); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
-                 codeBlockNode.setLanguage(langToSet);
+                 codeBlockNode.setLanguage(langToSet as string);
             } else if (blockType === 'code') { 
                  // This case might be redundant if updateToolbar sets blockType correctly
                  // And then formatBlock('code') would be called which uses the current codeLanguage state.
@@ -594,7 +594,7 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if($isRangeSelection(selection)){
             const node = getSelectedNode(selection);
-            const codeNode = $getNearestNodeOfType(node, $isCodeNode); 
+            const codeNode = $getNearestNodeOfType(node, CodeNode); 
             if ($isCodeNode(codeNode)) {
                 navigator.clipboard.writeText(codeNode.getTextContent())
                 .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
@@ -701,7 +701,7 @@ export default function ToolbarPlugin() {
              <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[50px] sm:w-[70px]">{blockTypeToBlockName[blockType] || 'Normal'}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
+        <DropdownMenuContent className="overflow-y-scroll">
           <DropdownMenuItem onClick={() => formatBlock('paragraph')} className={blockType === 'paragraph' ? 'bg-accent text-accent-foreground' : ''}>
             <Pilcrow className="mr-2 h-4 w-4" /> Normal
           </DropdownMenuItem>
@@ -806,7 +806,7 @@ export default function ToolbarPlugin() {
             <Palette className="h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor.startsWith('hsl(var(--foreground))') ? 'currentColor' : currentTextColor }} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48">
+        <DropdownMenuContent className="w-48 overflow-y-scroll">
           {COLOR_PALETTE.map(color => (
             <DropdownMenuItem key={color.name} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
               <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
@@ -844,13 +844,13 @@ export default function ToolbarPlugin() {
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
-             lowercase
+          <CaseLower className="mr-2 h-4 w-4" /> lowercase
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
-             UPPERCASE
+             <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
-             Capitalize Case
+          <CaseSensitive className="mr-2 h-4 w-4" /> Capitalize Case
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

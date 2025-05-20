@@ -19,10 +19,10 @@ export function CodeHighlightPlugin(): JSX.Element | null {
     // Ensure CodeNode and CodeHighlightNode are registered if not done globally
     // This is typically done in LexicalComposer initialConfig.nodes
     // For safety, we can check and register if needed, though it's better practice to register them upfront.
-    // if (!editor.hasNodes([CodeNode, CodeHighlightNode])) {
-    //   console.warn("CodeNode or CodeHighlightNode not registered. Code highlighting might not work.");
-    //   // Potentially register them here if absolutely necessary, but it's not ideal.
-    // }
+    if (!editor.hasNodes([CodeNode, CodeHighlightNode])) {
+      console.warn("CodeNode or CodeHighlightNode not registered. Code highlighting might not work.");
+      // Potentially register them here if absolutely necessary, but it's not ideal.
+    }
     return registerCodeHighlighting(editor);
   }, [editor]);
 
