@@ -19,9 +19,10 @@ import ToolbarPlugin from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
 import { Toaster } from "@/components/ui/toaster";
 
-import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin'; // Corrected import path
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
-// import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
+// import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed due to install issues
+import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
 
 
 // Initial editor state - can be empty or pre-filled
@@ -40,6 +41,14 @@ const initialJsonState = {
             "version": 1
           }
         ],
+        "direction": "ltr",
+        "format": "",
+        "indent": 0,
+        "type": "paragraph",
+        "version": 1
+      },
+      {
+        "children": [],
         "direction": "ltr",
         "format": "",
         "indent": 0,
@@ -87,9 +96,11 @@ export default function LexicalEditorComponent(): JSX.Element {
           <TablePlugin />
           {/* <CollapsiblePlugin /> */} {/* Removed */}
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+          <BlockAnkerPlugin />
         </div>
       </div>
       <Toaster />
     </LexicalComposer>
   );
 }
+
