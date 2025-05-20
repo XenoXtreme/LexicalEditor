@@ -30,11 +30,10 @@ import * as LexicalSelectionUtil from '@lexical/selection';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-// import { INSERT_COLLAPSIBLE_COMMAND } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2, Palette, CaseSensitive, Eraser, Copy, FontSize, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, ChevronsUpDown, Rows, Columns,
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Type, ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -65,7 +64,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
+// import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; // AI Gen removed
 import { createCommand, type LexicalCommand } from 'lexical';
 
 
@@ -100,18 +99,16 @@ const blockTypeToBlockName: Record<string, string> = {
 };
 
 const FONT_FAMILY_OPTIONS: [string, string][] = [
-  ['Arial', 'Arial'],
-  ['Courier New', 'Courier New'],
-  ['Georgia', 'Georgia'],
-  ['Times New Roman', 'Times New Roman'],
-  ['Trebuchet MS', 'Trebuchet MS'],
-  ['Verdana', 'Verdana'],
-  ['Geist Sans', 'var(--font-geist-sans)'],
-  // ['Geist Mono', 'var(--font-geist-mono)'], // Assuming Geist Mono might be causing issues, temporarily removed
-  ['Roboto', 'var(--font-roboto)'],
-  ['Open Sans', 'var(--font-open-sans)'],
-  ['Lato', 'var(--font-lato)'],
-  ['Montserrat', 'var(--font-montserrat)'],
+  ['Arial', 'Arial, sans-serif'],
+  ['Courier New', "'Courier New', Courier, monospace"],
+  ['Georgia', 'Georgia, serif'],
+  ['Times New Roman', "'Times New Roman', Times, serif"],
+  ['Trebuchet MS', "'Trebuchet MS', Helvetica, sans-serif"],
+  ['Verdana', 'Verdana, Geneva, sans-serif'],
+  ['Roboto', 'var(--font-roboto), sans-serif'],
+  ['Open Sans', 'var(--font-open-sans), sans-serif'],
+  ['Lato', 'var(--font-lato), sans-serif'],
+  ['Montserrat', 'var(--font-montserrat), sans-serif'],
 ];
 
 const FONT_SIZE_OPTIONS: [string, string][] = [
@@ -133,11 +130,17 @@ const FONT_SIZE_OPTIONS: [string, string][] = [
   ['96px', '72pt (96px)'],
 ];
 
+// Helper to extract numeric part for font size display
+const getNumericFontSize = (fontSize: string) => {
+  const match = fontSize.match(/^(\d+)/);
+  return match ? match[1] : fontSize;
+};
+
 
 const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Default', value: 'inherit' },
   { name: 'Black', value: 'hsl(var(--foreground))', isThemeVar: true },
-  { name: 'White', value: 'hsl(var(--background))', isThemeVar: true },
+  { name: 'White', value: 'hsl(var(--background))', isThemeVar: true }, // Note: White text on white bg might be invisible
   { name: 'Primary', value: 'hsl(var(--primary))', isThemeVar: true },
   { name: 'Secondary', value: 'hsl(var(--secondary-foreground))', isThemeVar: true },
   { name: 'Accent', value: 'hsl(var(--accent))', isThemeVar: true },
@@ -146,6 +149,18 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Green', value: '#0F9D58' },
   { name: 'Blue', value: '#4285F4' },
   { name: 'Yellow', value: '#F4B400' },
+  { name: 'Purple', value: '#5E35B1'},
+  { name: 'Pink', value: '#D81B60'},
+  { name: 'Orange', value: '#F57C00'},
+  { name: 'Teal', value: '#00897B'},
+  { name: 'Gray', value: '#757575'}
+];
+
+const ALIGNMENT_OPTIONS: { value: ElementFormatType; label: string; icon: React.ElementType }[] = [
+  { value: 'left', label: 'Left Align', icon: AlignLeft },
+  { value: 'center', label: 'Center Align', icon: AlignCenter },
+  { value: 'right', label: 'Right Align', icon: AlignRight },
+  { value: 'justify', label: 'Justify Align', icon: AlignJustify },
 ];
 
 
@@ -183,18 +198,13 @@ export default function ToolbarPlugin() {
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [isCode, setIsCode] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(false);
+  const [isHighlight, setIsHighlight] = useState(false); // For the default highlight format
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
-  const [currentFontSize, setCurrentFontSize] = useState<string>('16px'); // Default to 12pt (16px)
-  const [currentFontFamily, setCurrentFontFamily] = useState<string>('var(--font-geist-sans)'); // Default to Geist Sans
+  const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
+  const [currentFontFamily, setCurrentFontFamily] = useState<string>('Arial, sans-serif');
   const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
   const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
-
-
-  const [isGenerateTextDialogOpen, setIsGenerateTextDialogOpen] = useState(false);
-  const [generationPrompt, setGenerationPrompt] = useState('');
-  const [isGeneratingText, setIsGeneratingText] = useState(false);
 
   const [isInsertTableDialogOpen, setIsInsertTableDialogOpen] = useState(false);
   const [tableRows, setTableRows] = useState('3');
@@ -231,6 +241,7 @@ export default function ToolbarPlugin() {
       setIsCode(selection.hasFormat('code'));
       setIsHighlight(selection.hasFormat('highlight'));
 
+
       const node = getSelectedNode(selection);
       const parent = node.getParent();
       setIsLink($isLinkNode(parent) || $isLinkNode(node));
@@ -248,7 +259,7 @@ export default function ToolbarPlugin() {
           } else if ($isCodeNode(element)) {
             type = 'code';
             const currentLanguage = element.getLanguage();
-            setCodeLanguage(currentLanguage || 'plaintext'); // if undefined, set to plaintext for select
+            setCodeLanguage(currentLanguage || 'plaintext');
           }
 
 
@@ -260,14 +271,16 @@ export default function ToolbarPlugin() {
         }
       }
 
-      if (element.getFormatType) {
-        setElementFormat(element.getFormatType());
+      // Ensure element.getFormatType exists before calling
+      if (element && typeof (element as any).getFormatType === 'function') {
+        setElementFormat((element as any).getFormatType());
       } else {
-        setElementFormat('left');
+        setElementFormat('left'); // Default if not available
       }
 
+
       setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '16px'));
-      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', 'var(--font-geist-sans)'));
+      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', 'Arial, sans-serif'));
       setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
       setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
 
@@ -306,7 +319,6 @@ export default function ToolbarPlugin() {
         },
         LowPriority,
       ),
-      // Register custom image command
       editor.registerCommand(
         INSERT_IMAGE_COMMAND,
         (payload) => {
@@ -327,7 +339,6 @@ export default function ToolbarPlugin() {
         },
         COMMAND_PRIORITY_LOW,
       )
-      // Collapsible command registration removed
     );
   }, [editor, updateToolbar]);
 
@@ -343,7 +354,7 @@ export default function ToolbarPlugin() {
   }, [editor, isLink]);
 
   const formatBlock = (type: string) => {
-    if (blockType === type && type !== 'paragraph' && type !== 'quote') return;
+    if (blockType === type && type !== 'paragraph' && type !== 'quote' && type !== 'code') return;
 
     editor.update(() => {
       const selection = $getSelection();
@@ -354,50 +365,43 @@ export default function ToolbarPlugin() {
       } else if (type === 'h1' || type === 'h2' || type === 'h3') {
         LexicalSelectionUtil.$setBlocksType(selection, () => $createHeadingNode(type as HeadingTagType));
       } else if (type === 'ul') {
-        if (blockType === 'ul') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-        else editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+        editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
       } else if (type === 'ol') {
-        if (blockType === 'ol') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-        else editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+        editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
       } else if (type === 'check') {
-        if (blockType === 'check') editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-        else editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+        editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
       } else if (type === 'quote') {
-        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode()); // Fallback for $createQuoteNode
-        // Ideally: import { $createQuoteNode } from '@lexical/rich-text';
-        // Then: LexicalSelectionUtil.$setBlocksType(selection, () => $createQuoteNode());
+         // Import $createQuoteNode from '@lexical/rich-text'
+         // LexicalSelectionUtil.$setBlocksType(selection, () => $createQuoteNode());
+         // For now, using paragraph as a fallback if $createQuoteNode is not imported or used directly
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
       } else if (type === 'code') {
-        const anchorNode = selection.anchor.getNode();
-        const topLevelElement = anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow();
-        if ($isCodeNode(topLevelElement)) {
-            LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
-        } else {
-            // Pass undefined for language if 'plaintext' is selected, otherwise pass the language
-            const langToSet = codeLanguage === 'plaintext' ? undefined : codeLanguage;
-            LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
-        }
+        const langToSet = codeLanguage === 'plaintext' ? undefined : codeLanguage;
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
       }
     });
   };
 
   const onCodeLanguageSelect = useCallback(
     (value: string) => {
-      setCodeLanguage(value); // Update state to reflect selection in dropdown
+      setCodeLanguage(value); 
       editor.update(() => {
         if (selectedElementKey !== null) {
           const node = $getNodeByKey(selectedElementKey);
           if ($isCodeNode(node)) {
-            // If "plaintext" is selected from dropdown, set language on node to undefined
-            // Otherwise, set it to the selected language value
             node.setLanguage(value === 'plaintext' ? undefined : value);
           }
+        } else { // If no code block is selected, apply to new code blocks
+            formatBlock('code'); // This will use the new codeLanguage
         }
       });
     },
-    [editor, selectedElementKey],
+    [editor, selectedElementKey, codeLanguage], // Added codeLanguage
   );
 
+
   const formatElement = (format: ElementFormatType) => {
+    setElementFormat(format);
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, format);
   };
 
@@ -453,25 +457,28 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues.
-        console.warn("LexicalSelectionUtil.$clearFormatting is currently commented out. Using manual clear.");
-        selection.format = 0; // Clear basic formats (bold, italic, etc.)
-        LexicalSelectionUtil.$patchStyleText(selection, { // Clear styles
-            'font-family': 'var(--font-geist-sans)', // Reset to default or desired base
-            'font-size': '16px', // Reset to default
-            'color': 'inherit', // Reset to default
-            'background-color': 'transparent', // Reset highlight
-            'text-decoration': 'none', // Remove underline/strikethrough if applied via style
-          });
+        // LexicalSelectionUtil.$clearFormatting(selection); // This can be problematic
+        console.warn("LexicalSelectionUtil.$clearFormatting is known to have issues. Performing manual clear.");
 
-        // Explicitly toggle off known formats if they were active
-        // This is a more robust way than relying on $clearFormatting if it's problematic
+        // Clear inline formats by dispatching commands
         if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
         if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
         if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
         if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
         if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
         if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
+        
+        // Reset custom styles applied via $patchStyleText
+        LexicalSelectionUtil.$patchStyleText(selection, {
+          'font-family': 'Arial, sans-serif', // Reset to default
+          'font-size': '16px', // Reset to default
+          'color': 'inherit', // Reset to default
+          'background-color': 'transparent', // Reset highlight
+        });
+
+        // Additionally, ensure the selection itself reflects no formats
+        // This is a more direct way to clear the internal format state of the selection
+        selection.format = 0; 
       }
     });
   };
@@ -491,81 +498,6 @@ export default function ToolbarPlugin() {
   }, [editor, blockType, selectedElementKey, toast]);
 
 
-  const handleGenerateText = async () => {
-    if (!generationPrompt.trim() || isGeneratingText) return;
-
-    setIsGeneratingText(true);
-    let generatedTextContent: string | null = null;
-
-    try {
-      const input: GenerateTextInput = { prompt: generationPrompt };
-      const result = await generateText(input);
-
-      if (result && result.generatedText) {
-        generatedTextContent = result.generatedText;
-
-        editor.focus(
-          () => {
-            if (generatedTextContent !== null) {
-              editor.update(() => {
-                const selection = $getSelection();
-                if ($isRangeSelection(selection)) {
-                  selection.insertText(generatedTextContent!);
-                } else {
-                  const root = $getRoot();
-                  const paragraph = $createParagraphNode();
-                  paragraph.append($createTextNode(generatedTextContent!));
-                  root.append(paragraph);
-                  paragraph.selectEnd();
-                }
-              });
-            }
-          }
-        );
-
-        toast({
-          title: "Text Generated",
-          description: "AI-generated text has been inserted into the editor.",
-        });
-      } else if (result && result.generatedText === "") {
-        toast({
-          variant: "default",
-          title: "AI Response",
-          description: "The AI returned an empty response. This might be due to content filters or the nature of the prompt.",
-        });
-      }
-       else {
-        throw new Error("AI returned an unexpected or empty response.");
-      }
-    } catch (error) {
-      console.error("AI Text Generation error:", error);
-      let title = "AI Text Generation Failed";
-      let description = "An unexpected error occurred.";
-
-      if (error instanceof Error) {
-        if (error.message.includes("429 Too Many Requests")) {
-          title = "AI Rate Limit Exceeded";
-          description = "You've made too many requests for AI text generation. Please try again later.";
-        } else if (error.message.includes("Candidate was blocked due to SAFETY")) {
-            title = "Content Generation Blocked";
-            description = "The AI could not generate text for this prompt due to safety filters. Please try a different prompt.";
-        }
-         else {
-          description = error.message || "Failed to generate text. Please check console for details.";
-        }
-      }
-
-      toast({
-        variant: "destructive",
-        title: title,
-        description: description,
-      });
-    } finally {
-      setIsGeneratingText(false);
-      // setIsGenerateTextDialogOpen(false); // Keep dialog open for review
-    }
-  };
-
   const handleInsertTable = () => {
     const rows = parseInt(tableRows, 10);
     const columns = parseInt(tableColumns, 10);
@@ -584,7 +516,7 @@ export default function ToolbarPlugin() {
   };
 
   const handleInsertImage = () => {
-    const src = imageUrl.trim() || `https://placehold.co/400x300.png`; // Default placeholder
+    const src = imageUrl.trim() || `https://placehold.co/400x300.png`; 
     const alt = imageAltText.trim() || 'Placeholder image';
     editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src, altText: alt, width: 400, height: 300});
     setIsInsertImageDialogOpen(false);
@@ -592,9 +524,12 @@ export default function ToolbarPlugin() {
     setImageAltText('');
   };
 
+  const currentAlignment = ALIGNMENT_OPTIONS.find(opt => opt.value === elementFormat) || ALIGNMENT_OPTIONS[0];
+
 
   return (
     <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1">
+      {/* Undo/Redo */}
       <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo (Ctrl+Z)">
         <Undo className="h-4 w-4" />
       </Button>
@@ -603,10 +538,11 @@ export default function ToolbarPlugin() {
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
+      {/* Block Type */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Block Type">
-             {blockTypeToBlockName[blockType] || 'Block Type'}
+          <Button variant="ghost" className="px-2 h-9 min-w-[100px] text-sm justify-start" title="Block Type">
+             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> {blockTypeToBlockName[blockType] || 'Normal'}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -641,12 +577,13 @@ export default function ToolbarPlugin() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
+      
+      {/* Code Language Selector (Contextual) */}
       {blockType === 'code' && (
         <>
-         <Select value={codeLanguage} onValueChange={onCodeLanguageSelect}>
-          <SelectTrigger className="w-[150px] h-9 ml-1" title="Select Code Language">
-            <SelectValue placeholder="Select language" />
+         <Select value={codeLanguage || 'plaintext'} onValueChange={onCodeLanguageSelect}>
+          <SelectTrigger className="w-[140px] h-9 ml-1 text-xs" title="Select Code Language">
+            <SelectValue placeholder="Language" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="plaintext">Plain Text</SelectItem>
@@ -660,40 +597,38 @@ export default function ToolbarPlugin() {
         </Button>
         </>
       )}
-      <Separator orientation="vertical" className="h-6 mx-1" />
 
-       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Font Family">
-            {FONT_FAMILY_OPTIONS.find(opt => opt[1] === currentFontFamily)?.[0] || FONT_FAMILY_OPTIONS.find(opt => opt[0] === currentFontFamily)?.[0] || 'Font'}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
+      {/* Font Family */}
+      <Select value={currentFontFamily} onValueChange={onFontFamilySelect}>
+        <SelectTrigger className="w-[120px] h-9 text-sm px-2" title="Font Family">
+          <Type className="mr-1 h-4 w-4 shrink-0" />
+          <SelectValue placeholder="Font" />
+        </SelectTrigger>
+        <SelectContent>
           {FONT_FAMILY_OPTIONS.map(([label, value]) => (
-            <DropdownMenuItem key={value} onClick={() => onFontFamilySelect(value)} className={currentFontFamily === value ? 'bg-accent text-accent-foreground' : ''} style={{fontFamily: value}}>
+            <SelectItem key={value} value={value} style={{fontFamily: value}}>
               {label}
-            </DropdownMenuItem>
+            </SelectItem>
           ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </SelectContent>
+      </Select>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-3 h-9 min-w-[120px]" title="Font Size">
-           {FONT_SIZE_OPTIONS.find(opt => opt[0] === currentFontSize)?.[1] || currentFontSize}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
+      {/* Font Size */}
+      <Select value={currentFontSize} onValueChange={onFontSizeSelect}>
+        <SelectTrigger className="w-[70px] h-9 text-sm px-2" title="Font Size">
+          <SelectValue placeholder="Size" />
+        </SelectTrigger>
+        <SelectContent>
           {FONT_SIZE_OPTIONS.map(([value, label]) => (
-            <DropdownMenuItem key={value} onClick={() => onFontSizeSelect(value)} className={currentFontSize === value ? 'bg-accent text-accent-foreground' : ''}>
-              {label}
-            </DropdownMenuItem>
+            <SelectItem key={value} value={value}>
+              {getNumericFontSize(label)}
+            </SelectItem>
           ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </SelectContent>
+      </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-
+      {/* Bold, Italic, Underline */}
       <Button variant={isBold ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} aria-label="Format Bold" title="Bold (Ctrl+B)">
         <Bold className="h-4 w-4" />
       </Button>
@@ -703,12 +638,7 @@ export default function ToolbarPlugin() {
       <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
         <Underline className="h-4 w-4" />
       </Button>
-      <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
-        <Strikethrough className="h-4 w-4" />
-      </Button>
-       <Button variant={isHighlight ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')} aria-label="Highlight Text" title="Highlight Text (Default Yellow)">
-        <Highlighter className="h-4 w-4" />
-      </Button>
+      {/* Inline Code, Link */}
       <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
         <Code className="h-4 w-4" />
       </Button>
@@ -716,42 +646,103 @@ export default function ToolbarPlugin() {
         <Link2 className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* Text Color */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Text Color">
+            <Palette className="h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor.startsWith('hsl(var(--foreground))') ? 'currentColor' : currentTextColor }} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-48">
+          {COLOR_PALETTE.map(color => (
+            <DropdownMenuItem key={color.name} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+              {color.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      {/* Insert Dropdown */}
-       <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
+      {/* Highlight Color */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Highlight Color">
+             <Highlighter className="h-4 w-4" style={{ color: currentHighlightColor === 'transparent' || currentHighlightColor === 'inherit' ? 'currentColor' : 'hsl(var(--accent))', fillOpacity: currentHighlightColor !== 'transparent' && currentHighlightColor !== 'inherit' ? 0.3 : 0 }}/>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-48">
+           <DropdownMenuItem onClick={() => onHighlightColorSelect('transparent')} className={currentHighlightColor === 'transparent' ? 'bg-accent text-accent-foreground' : ''}>
+             <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
+              None
+            </DropdownMenuItem>
+          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( // Filter out 'inherit' for background
+            <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+              {color.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      
+      {/* Text Case */}
+       <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Change Case">
+            <CaseSensitive className="h-4 w-4" /> {/* Icon looks like "Aa" */}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
+            <CaseLower className="mr-2 h-4 w-4" /> lowercase
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
+            <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
+            <PilcrowSquare className="mr-2 h-4 w-4" /> Capitalize Case
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Strikethrough & Clear Format (kept for utility) */}
+      <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
+        <Strikethrough className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" onClick={clearFormatting} aria-label="Clear Formatting" title="Clear Formatting">
+        <Eraser className="h-4 w-4" />
+      </Button>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
+      {/* Insert Menu */}
+      <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
         <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" title="Insert">
-                <PlusSquare className="h-4 w-4" />
+              <Button variant="ghost" className="px-2 h-9 text-sm justify-start" title="Insert">
+                <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
                 <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
               </DropdownMenuItem>
-
-               <DialogTrigger asChild>
+              <DialogTrigger asChild>
                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertTableDialogOpen(true); }}>
                     <TableIcon className="mr-2 h-4 w-4" /> Table
                 </DropdownMenuItem>
               </DialogTrigger>
-
               <DialogTrigger asChild>
                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertImageDialogOpen(true); }}>
                     <ImageIcon className="mr-2 h-4 w-4" /> Image
                 </DropdownMenuItem>
               </DialogTrigger>
-              {/* Collapsible menu item removed */}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Insert Table Dialog Content - must be outside DropdownMenuContent but linked by Dialog open state */}
+
           {isInsertTableDialogOpen && (
             <DialogContent className="sm:max-w-xs">
-              <DialogHeader>
-                <DialogTitle>Insert Table</DialogTitle>
-                <DialogDescription>Specify the number of rows and columns.</DialogDescription>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
@@ -769,13 +760,9 @@ export default function ToolbarPlugin() {
             </DialogContent>
           )}
 
-          {/* Insert Image Dialog Content */}
            {isInsertImageDialogOpen && (
             <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Insert Image</DialogTitle>
-                <DialogDescription>Enter image URL and alternative text.</DialogDescription>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
@@ -783,7 +770,7 @@ export default function ToolbarPlugin() {
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
-                  <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text for the image" />
+                  <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text" />
                 </div>
               </div>
               <DialogFooter>
@@ -794,138 +781,29 @@ export default function ToolbarPlugin() {
           )}
         </Dialog>
       </Dialog>
-      {/* End Insert Dropdown Logic */}
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-
+      {/* Alignment Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Text Color">
-            <Palette className="h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor === 'hsl(var(--foreground))' ? 'currentColor' : currentTextColor }} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48">
-          {COLOR_PALETTE.map(color => (
-            <DropdownMenuItem key={color.name} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
-              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
-              {color.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Background Color (Highlight)">
-            <Baseline className="h-4 w-4" style={{ color: currentHighlightColor === 'transparent' || currentHighlightColor === 'inherit' ? 'currentColor' : 'hsl(var(--accent))', fillOpacity: currentHighlightColor !== 'transparent' && currentHighlightColor !== 'inherit' ? 0.5 : 0 }}/>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48">
-           <DropdownMenuItem onClick={() => onHighlightColorSelect('transparent')} className={currentHighlightColor === 'transparent' ? 'bg-accent text-accent-foreground' : ''}>
-             <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
-              None (Transparent)
-            </DropdownMenuItem>
-          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => (
-            <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
-              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
-              {color.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Change Case">
-            <CaseSensitive className="h-4 w-4" />
+          <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Alignment">
+            <currentAlignment.icon className="mr-2 h-4 w-4 shrink-0" /> {currentAlignment.label}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
-            <CaseLower className="mr-2 h-4 w-4" /> lowercase
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
-            <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
-            <PilcrowSquare className="mr-2 h-4 w-4" /> Capitalize Case
-          </DropdownMenuItem>
+          {ALIGNMENT_OPTIONS.map(opt => (
+            <DropdownMenuItem 
+              key={opt.value} 
+              onClick={() => formatElement(opt.value)}
+              className={elementFormat === opt.value ? 'bg-accent text-accent-foreground' : ''}
+            >
+              <opt.icon className="mr-2 h-4 w-4" /> {opt.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button variant="ghost" size="icon" onClick={clearFormatting} aria-label="Clear Formatting" title="Clear Formatting">
-        <Eraser className="h-4 w-4" />
-      </Button>
-      <Separator orientation="vertical" className="h-6 mx-1" />
-
-
-      <Dialog open={isGenerateTextDialogOpen} onOpenChange={(open) => {
-        setIsGenerateTextDialogOpen(open);
-        if (!open) setGenerationPrompt(''); // Clear prompt on close
-      }}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Generate Text with AI" title="Generate Text with AI">
-            <Sparkles className="h-4 w-4" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Generate Text with AI</DialogTitle>
-            <DialogDescription>
-              Enter a prompt below and the AI will generate text for you.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="prompt-input" className="text-right col-span-1">
-                Prompt
-              </Label>
-              <Input
-                id="prompt-input"
-                value={generationPrompt}
-                onChange={(e) => setGenerationPrompt(e.target.value)}
-                className="col-span-3"
-                placeholder="e.g., Write a short story about..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && generationPrompt.trim()) {
-                    e.preventDefault();
-                    handleGenerateText();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-             <DialogClose asChild>
-                <Button type="button" variant="outline">
-                 Cancel
-                </Button>
-            </DialogClose>
-            <Button
-                type="button"
-                onClick={handleGenerateText}
-                disabled={isGeneratingText || !generationPrompt.trim()}
-            >
-              {isGeneratingText ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>) : "Generate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-
-      <Separator orientation="vertical" className="h-6 mx-1" />
-      <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left" title="Align Left">
-        <AlignLeft className="h-4 w-4" />
-      </Button>
-      <Button variant={elementFormat === 'center' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('center')} aria-label="Align Center" title="Align Center">
-        <AlignCenter className="h-4 w-4" />
-      </Button>
-      <Button variant={elementFormat === 'right' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('right')} aria-label="Align Right" title="Align Right">
-        <AlignRight className="h-4 w-4" />
-      </Button>
-      <Button variant={elementFormat === 'justify' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('justify')} aria-label="Align Justify" title="Align Justify">
-        <AlignJustify className="h-4 w-4" />
-      </Button>
     </div>
   );
 }
+
