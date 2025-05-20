@@ -33,10 +33,11 @@ import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace i
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
+// import { INSERT_EQUATION_COMMAND } from '@lexical/math'; // Removed
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent /* Calculator icon removed */
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -67,7 +68,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; // Adjusted path
+import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; 
 import { createCommand, type LexicalCommand } from 'lexical';
 
 
@@ -208,7 +209,7 @@ export default function ToolbarPlugin() {
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
-  const [currentFontFamily, setCurrentFontFamily] = useState<string>(`Arial, sans-serif`);
+  const [currentFontFamily, setCurrentFontFamily] = useState<string>(`var(--font-roboto), sans-serif`);
   const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
   const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
 
@@ -232,9 +233,57 @@ export default function ToolbarPlugin() {
     const selection = $getSelection();
     if ($isRangeSelection(selection)) {
       const anchorNode = selection.anchor.getNode();
-      const topLevelElement = anchorNode.getTopLevelElementOrThrow(); // More reliable way to get the main block
-      const elementKey = topLevelElement.getKey();
-      setSelectedElementKey(elementKey);
+      
+      // Parent List Item / List
+      const listItemNode = $getNearestNodeOfType(anchorNode, $isListItemNode as any);
+      const parentList = listItemNode ? $getNearestNodeOfType(listItemNode, $isListNode as any) : null;
+
+      if (parentList) {
+        setBlockType(parentList.getListType() as string); // 'ul', 'ol', 'check'
+         setSelectedElementKey(parentList.getKey());
+         if (typeof (parentList as any).getFormatType === 'function') {
+            setElementFormat((parentList as any).getFormatType());
+          } else {
+            setElementFormat('left'); 
+          }
+      } else {
+          // Not in a list, check top-level element
+          let topLevelElement = anchorNode.getTopLevelElement();
+          if (!topLevelElement) {
+            topLevelElement = $findMatchingParent(anchorNode, (e) => {
+              const parent = e.getParent();
+              return parent !== null && $isRootOrShadowRoot(parent);
+            });
+          }
+          if (!topLevelElement) { 
+            topLevelElement = anchorNode;
+          }
+          
+          if (topLevelElement) {
+              setSelectedElementKey(topLevelElement.getKey());
+              if (typeof (topLevelElement as any).getFormatType === 'function') {
+                setElementFormat((topLevelElement as any).getFormatType());
+              } else {
+                setElementFormat('left'); 
+              }
+
+              if ($isHeadingNode(topLevelElement)) {
+                setBlockType(topLevelElement.getTag());
+              } else if (isQuoteNodeLexical(topLevelElement)) {
+                setBlockType('quote');
+              } else if ($isCodeNode(topLevelElement)) {
+                setBlockType('code');
+                const lang = topLevelElement.getLanguage();
+                setCodeLanguage(lang || getDefaultCodeLanguage() || 'plaintext');
+              } else {
+                setBlockType('paragraph');
+              }
+          } else {
+            setSelectedElementKey(null);
+            setElementFormat('left');
+            setBlockType('paragraph');
+          }
+      }
 
 
       setIsBold(selection.hasFormat('bold'));
@@ -247,35 +296,10 @@ export default function ToolbarPlugin() {
       const node = getSelectedNode(selection);
       const parent = node.getParent();
       setIsLink($isLinkNode(parent) || $isLinkNode(node));
-
-      // Block type determination
-      const parentList = $getNearestNodeOfType(anchorNode, ListNode);
-      if (parentList) {
-        setBlockType(parentList.getListType());
-      } else {
-        if ($isHeadingNode(topLevelElement)) {
-          setBlockType(topLevelElement.getTag());
-        } else if (isQuoteNodeLexical(topLevelElement)) {
-          setBlockType('quote');
-        } else if ($isCodeNode(topLevelElement)) {
-          setBlockType('code');
-          const lang = topLevelElement.getLanguage();
-          setCodeLanguage(lang || getDefaultCodeLanguage() || 'plaintext');
-        } else {
-          setBlockType('paragraph');
-        }
-      }
       
-      // Element Format (Alignment)
-      if (typeof (topLevelElement as any).getFormatType === 'function') {
-         setElementFormat((topLevelElement as any).getFormatType());
-      } else {
-         setElementFormat('left'); 
-      }
-
 
       setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '16px'));
-      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `Arial, sans-serif`));
+      setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `var(--font-roboto), sans-serif`));
       setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
       setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
 
@@ -351,15 +375,17 @@ export default function ToolbarPlugin() {
             }
         }
 
-        const url = window.prompt(isLink ? 'Edit link URL:' : 'Enter link URL:', existingUrl || 'https://');
+        const url = window.prompt(isLink ? 'Edit link URL (leave empty to remove):' : 'Enter link URL:', existingUrl || 'https://');
         
         if (url === null) { 
-            return;
+            return; // User cancelled
         }
         if (url === '') { 
-            editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, null); // Remove link
         } else {
-            editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
+            // Ensure protocol is present if not already
+            const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
         }
     });
 }, [editor, isLink]);
@@ -368,9 +394,11 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
+      
+      const currentBlockTypeIsList = ['ul', 'ol', 'check'].includes(blockType);
+      const targetBlockTypeIsList = ['ul', 'ol', 'check'].includes(type);
 
-      if (blockType === type && (type === 'ul' || type === 'ol' || type === 'check')) {
-        // If current block type is the same list type, remove the list
+      if (blockType === type && currentBlockTypeIsList) {
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
         return;
       }
@@ -404,7 +432,7 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
             const node = getSelectedNode(selection);
-            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode as any); // Type assertion
+            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode as any); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet);
             } else if (blockType === 'code') { 
@@ -482,7 +510,6 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // Build issue, commented out
         console.warn("$clearFormatting from @lexical/selection is currently commented out due to persistent build issues. Attempting manual style reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
@@ -494,7 +521,7 @@ export default function ToolbarPlugin() {
           'font-style': '',                  
           'text-decoration': '',             
         });
-        selection.removeText(); // Clears bold, italic, etc. more reliably
+        selection.removeText(); 
         
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
@@ -502,8 +529,7 @@ export default function ToolbarPlugin() {
             return parent !== null && $isRootOrShadowRoot(parent);
         }) || anchorNode.getTopLevelElementOrThrow();
 
-        if (!$isListNode(element) && !$isCodeNode(element) && !isQuoteNodeLexical(element) && !$isHeadingNode(element)) {
-        } else if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
+        if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
              LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
         }
       }
@@ -517,7 +543,7 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if($isRangeSelection(selection)){
             const node = getSelectedNode(selection);
-            const codeNode = $getNearestNodeOfType(node, $isCodeNode as any); // Type assertion
+            const codeNode = $getNearestNodeOfType(node, $isCodeNode as any); 
             if ($isCodeNode(codeNode)) {
                 navigator.clipboard.writeText(codeNode.getTextContent())
                 .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
@@ -525,7 +551,6 @@ export default function ToolbarPlugin() {
                 return;
             }
         }
-        // Fallback if selectedElementKey was used previously (might be less reliable with new logic)
         if(selectedElementKey){
              const node = $getNodeByKey(selectedElementKey);
              if($isCodeNode(node)){
@@ -571,7 +596,7 @@ export default function ToolbarPlugin() {
       return;
     }
     setIsGeneratingText(true);
-    editor.focus();
+    editor.focus(); 
     try {
       const result = await generateText({ prompt: promptText });
       editor.update(() => {
@@ -586,8 +611,6 @@ export default function ToolbarPlugin() {
         }
       });
       toast({ title: "Text Generated!", description: "AI has generated text based on your prompt." });
-      // setIsGenAIDialogOpen(false); // Keep dialog open
-      // setPromptText(''); // Optionally clear prompt
     } catch (error: any) {
       console.error("AI text generation failed:", error);
       let description = "An unexpected error occurred.";
@@ -603,6 +626,7 @@ export default function ToolbarPlugin() {
       toast({ variant: "destructive", title: "AI Generation Failed", description });
     } finally {
       setIsGeneratingText(false);
+      // Do not close dialog automatically: setIsGenAIDialogOpen(false);
     }
   };
 
@@ -612,7 +636,6 @@ export default function ToolbarPlugin() {
 
   return (
     <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1">
-      {/* Undo/Redo */}
       <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo (Ctrl+Z)">
         <Undo className="h-4 w-4" />
       </Button>
@@ -621,7 +644,6 @@ export default function ToolbarPlugin() {
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* Block Type */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Block Type">
@@ -786,7 +808,7 @@ export default function ToolbarPlugin() {
         <Eraser className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
-
+      
       <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" title="Generate Text with AI">
@@ -845,6 +867,15 @@ export default function ToolbarPlugin() {
                   <ImageIcon className="mr-2 h-4 w-4" /> Image
               </DropdownMenuItem>
             </DialogTrigger>
+            {/* Equation option removed
+            <DropdownMenuItem
+              onClick={() => {
+                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { equation: '', inline: false });
+              }}
+            >
+              <Calculator className="mr-2 h-4 w-4" /> Equation
+            </DropdownMenuItem>
+            */}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -897,7 +928,7 @@ export default function ToolbarPlugin() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56">
-          {ALIGNMENT_OPTIONS.map(opt => (
+          {ALIGNMENT_OPTIONS.filter(opt => ['left', 'center', 'right', 'justify'].includes(opt.value)).map(opt => ( 
             <DropdownMenuItem
               key={opt.value}
               onClick={() => formatElement(opt.value)}
@@ -908,6 +939,20 @@ export default function ToolbarPlugin() {
               {opt.shortcut && <span className="text-xs text-muted-foreground ml-auto">{opt.shortcut}</span>}
             </DropdownMenuItem>
           ))}
+           <DropdownMenuItem
+              onClick={() => formatElement('start')}
+              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''} 
+            >
+              <AlignLeft className="mr-2 h-4 w-4" /> 
+              <span className="flex-grow">Start Align</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => formatElement('end')}
+              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} 
+            >
+              <AlignRight className="mr-2 h-4 w-4" /> 
+              <span className="flex-grow">End Align</span>
+            </DropdownMenuItem>
           <DropdownMenuSeparator />
            <DropdownMenuItem onClick={() => editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)}>
               <Outdent className="mr-2 h-4 w-4" /> 
@@ -925,4 +970,3 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
-

@@ -8,6 +8,7 @@ import type { Klass, LexicalNode } from "lexical";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { ImageNode } from "./ImageNode.tsx"; 
 // Collapsible nodes removed due to import issues with @lexical/collapsible
+// EquationNode removed due to import issues with @lexical/math
 
 
 const EditorNodes: Array<Klass<LexicalNode>> = [
@@ -24,6 +25,7 @@ const EditorNodes: Array<Klass<LexicalNode>> = [
   LinkNode,
   HorizontalRuleNode,
   ImageNode,
+  // EquationNode, // Removed
   // CollapsibleContainerNode, // Removed
   // CollapsibleContentNode, // Removed
   // CollapsibleTitleNode, // Removed
