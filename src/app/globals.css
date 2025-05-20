@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -85,6 +86,7 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 16px; /* Default base font size */
   }
 
   /* Lexical Editor Specific Styles using theme classes */
@@ -98,7 +100,7 @@ body {
     @apply text-muted-foreground absolute top-4 left-4 text-base pointer-events-none;
   }
   .editor-paragraph {
-    @apply mb-2 text-base relative;
+    @apply mb-2 relative; /* Default paragraph style, font size is inherited or set by toolbar */
   }
   .editor-heading-h1 {
     @apply text-3xl font-bold my-4 text-primary;
@@ -113,13 +115,13 @@ body {
     @apply border-l-4 border-accent pl-4 italic my-2 py-1 text-muted-foreground;
   }
   .editor-list-ol {
-    @apply list-decimal list-inside my-2 ml-6 text-base;
+    @apply list-decimal list-inside my-2 ml-6;
   }
   .editor-list-ul {
-    @apply list-disc list-inside my-2 ml-6 text-base;
+    @apply list-disc list-inside my-2 ml-6;
   }
   .editor-listitem {
-    @apply mb-1 relative pl-0; /* Adjusted for custom checkbox */
+    @apply mb-1 relative; /* Base for list items */
   }
   .editor-nested-listitem {
     @apply ml-6;
@@ -148,78 +150,95 @@ body {
   .editor-text-highlight { /* For default highlight format */
     @apply bg-yellow-300 dark:bg-yellow-500 px-0.5;
   }
+
   .editor-code-block {
     @apply bg-muted p-3 rounded font-mono text-sm block overflow-x-auto my-2 relative;
+    tab-size: 2;
+    line-height: 1.5;
   }
-  /* For CodeHighlightPlugin, PrismJS classes would be used. These are generic fallbacks. */
-  .token.comment,
-  .token.prolog,
-  .token.doctype,
-  .token.cdata {
+  /* CodeHighlightPlugin (PrismJS-like) token styles */
+  .editor-code-block .token.comment,
+  .editor-code-block .token.prolog,
+  .editor-code-block .token.doctype,
+  .editor-code-block .token.cdata {
     @apply text-slate-500 dark:text-slate-400;
   }
-  .token.punctuation {
+  .editor-code-block .token.punctuation {
     @apply text-slate-700 dark:text-slate-300;
   }
-  .token.property,
-  .token.tag,
-  .token.boolean,
-  .token.number,
-  .token.constant,
-  .token.symbol,
-  .token.deleted {
+  .editor-code-block .token.property,
+  .editor-code-block .token.tag,
+  .editor-code-block .token.boolean,
+  .editor-code-block .token.number,
+  .editor-code-block .token.constant,
+  .editor-code-block .token.symbol,
+  .editor-code-block .token.deleted {
     @apply text-green-600 dark:text-green-400;
   }
-  .token.selector,
-  .token.attr-name,
-  .token.string,
-  .token.char,
-  .token.builtin,
-  .token.inserted {
+  .editor-code-block .token.selector,
+  .editor-code-block .token.attr-name,
+  .editor-code-block .token.string,
+  .editor-code-block .token.char,
+  .editor-code-block .token.builtin,
+  .editor-code-block .token.inserted {
     @apply text-purple-600 dark:text-purple-400;
   }
-  .token.operator,
-  .token.entity,
-  .token.url,
-  .language-css .token.string,
-  .style .token.string {
-    @apply text-yellow-600 dark:text-yellow-400;
+  .editor-code-block .token.operator,
+  .editor-code-block .token.entity,
+  .editor-code-block .token.url,
+  .editor-code-block .language-css .token.string,
+  .editor-code-block .style .token.string {
+    @apply text-yellow-600 dark:text-yellow-400; /* Tailwind orange is more yellow */
   }
-  .token.atrule,
-  .token.attr-value,
-  .token.keyword {
+  .editor-code-block .token.atrule,
+  .editor-code-block .token.attr-value,
+  .editor-code-block .token.keyword {
     @apply text-sky-600 dark:text-sky-400;
   }
-  .token.function,
-  .token.class-name {
+  .editor-code-block .token.function,
+  .editor-code-block .token.class-name {
     @apply text-pink-600 dark:text-pink-400;
   }
-  .token.regex,
-  .token.important,
-  .token.variable {
-    @apply text-orange-600 dark:text-orange-400;
+  .editor-code-block .token.regex,
+  .editor-code-block .token.important,
+  .editor-code-block .token.variable {
+    @apply text-orange-500 dark:text-orange-400; /* Adjusted to tailwind orange */
   }
+
 
   /* Checklist styles */
   .editor-listitem-unchecked,
   .editor-listitem-checked {
-    @apply list-none m-0 pl-6 relative; /* Use padding for checkbox space */
+    @apply list-none m-0 pl-7 relative cursor-pointer; /* Increased padding for checkbox, ensure pointer */
   }
+
+  .editor-listitem-unchecked > .editor-paragraph,
+  .editor-listitem-checked > .editor-paragraph {
+    @apply inline-block; /* Helps with click target */
+  }
+
+
   .editor-listitem-unchecked::before,
   .editor-listitem-checked::before {
     content: '';
-    @apply absolute left-0 top-[0.3em] w-4 h-4 border-2 border-primary rounded-sm cursor-pointer;
+    @apply absolute left-0 top-[0.2em] w-4 h-4 border-2 border-primary rounded-sm ; /* Removed cursor here, apply to item */
+    /* Ensure clickability is on the list item itself or the paragraph */
   }
+
   .editor-listitem-checked::before {
     @apply bg-primary;
   }
   .editor-listitem-checked::after { /* Checkmark */
     content: '';
-    @apply absolute left-[3px] top-[0.35em] w-2.5 h-1.5 border-l-2 border-b-2 border-primary-foreground transform rotate-[-45deg];
+    @apply absolute left-[3px] top-[0.25em] w-2.5 h-1.5 border-l-2 border-b-2 border-primary-foreground transform rotate-[-45deg];
   }
-  .editor-listitem-checked .editor-paragraph { /* Style text when checked */
+  .editor-listitem-checked > .editor-paragraph { /* Style text when checked */
      @apply line-through text-muted-foreground;
   }
+  .editor-listitem > div[dir="ltr"] > .editor-paragraph:first-child { /* Target paragraph inside checklist item */
+    margin-left: 0; /* Override default paragraph margin if needed for alignment */
+  }
+
 
   /* Image Node Styles */
   .editor-image {
@@ -248,7 +267,7 @@ body {
   .Lexical__horizontalRule {
     @apply my-4 border-t border-border;
   }
-  
+
   /* Collapsible Node Styles */
   .Collapsible__container {
     @apply my-2 border border-input rounded;
@@ -259,6 +278,5 @@ body {
   .Collapsible__content {
     @apply p-2 border-t border-input;
   }
-
-
 }
+

@@ -1,14 +1,40 @@
+
 import type {Metadata} from 'next';
-import {Geist, Geist_Mono} from 'next/font/google';
+// Use the correct exported names: GeistSans and GeistMono (camelCase)
+import { GeistSans, GeistMono, Roboto, Open_Sans, Lato, Montserrat } from 'next/font/google';
 import './globals.css';
 
-const geistSans = Geist({
+const geistSans = GeistSans({ // Use GeistSans (camelCase)
   variable: '--font-geist-sans',
   subsets: ['latin'],
 });
 
-const geistMono = Geist_Mono({
+const geistMono = GeistMono({ // Use GeistMono (camelCase)
   variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+const roboto = Roboto({
+  variable: '--font-roboto',
+  weight: ['400', '700'],
+  subsets: ['latin'],
+});
+
+const openSans = Open_Sans({
+  variable: '--font-open-sans',
+  weight: ['400', '700'],
+  subsets: ['latin'],
+});
+
+const lato = Lato({
+  variable: '--font-lato',
+  weight: ['400', '700'],
+  subsets: ['latin'],
+});
+
+const montserrat = Montserrat({
+  variable: '--font-montserrat',
+  weight: ['400', '700'],
   subsets: ['latin'],
 });
 
@@ -24,7 +50,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${roboto.variable} ${openSans.variable} ${lato.variable} ${montserrat.variable} antialiased`}>
         {children}
       </body>
     </html>

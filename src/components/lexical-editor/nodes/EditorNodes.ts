@@ -1,3 +1,4 @@
+
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import { ListItemNode, ListNode } from "@lexical/list";
@@ -6,11 +7,7 @@ import { AutoLinkNode, LinkNode } from "@lexical/link";
 import type { Klass, LexicalNode } from "lexical";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { ImageNode } from "./ImageNode.tsx"; 
-import {
-  CollapsibleContainerNode,
-  CollapsibleContentNode,
-  CollapsibleTitleNode,
-} from '@lexical/collapsible';
+// Collapsible nodes removed due to import issues with @lexical/collapsible
 
 
 const EditorNodes: Array<Klass<LexicalNode>> = [
@@ -27,9 +24,9 @@ const EditorNodes: Array<Klass<LexicalNode>> = [
   LinkNode,
   HorizontalRuleNode,
   ImageNode,
-  CollapsibleContainerNode,
-  CollapsibleContentNode,
-  CollapsibleTitleNode,
+  // CollapsibleContainerNode, // Removed
+  // CollapsibleContentNode, // Removed
+  // CollapsibleTitleNode, // Removed
 ];
 
 export default EditorNodes;

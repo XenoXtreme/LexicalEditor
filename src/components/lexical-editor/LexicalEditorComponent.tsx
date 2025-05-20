@@ -9,7 +9,7 @@ import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import { TRANSFORMERS } from '@lexical/markdown';
-import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin'; 
+import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -17,11 +17,11 @@ import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
-import { Toaster } from "@/components/ui/toaster"; 
+import { Toaster } from "@/components/ui/toaster";
 
-import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRuleNodePlugin';
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin'; // Corrected import path
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
-import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin';
+// import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
 
 
 // Initial editor state - can be empty or pre-filled
@@ -62,7 +62,7 @@ export default function LexicalEditorComponent(): JSX.Element {
     namespace: 'LexicalCanvasEditor',
     theme: EditorTheme,
     nodes: EditorNodes,
-    editorState: JSON.stringify(initialJsonState), 
+    editorState: JSON.stringify(initialJsonState),
     onError: (error: Error) => {
       console.error("Lexical editor error:", error);
     },
@@ -85,7 +85,7 @@ export default function LexicalEditorComponent(): JSX.Element {
           <CodeHighlightPlugin />
           <HorizontalRulePlugin />
           <TablePlugin />
-          <CollapsiblePlugin />
+          {/* <CollapsiblePlugin /> */} {/* Removed */}
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         </div>
       </div>
