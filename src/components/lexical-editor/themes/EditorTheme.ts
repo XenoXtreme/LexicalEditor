@@ -34,19 +34,20 @@ const theme: EditorThemeClasses = {
     underline: 'editor-text-underline',
     strikethrough: 'editor-text-strikethrough',
     underlineStrikethrough: 'editor-text-underlineStrikethrough',
-    code: 'editor-text-code',
+    code: 'editor-text-code', // For inline code
     highlight: 'editor-text-highlight',
   },
-  code: 'editor-code-block', // Base class for code block
-  // Theme classes for code highlighting (tokens)
+  code: 'editor-code-block', // Base class for code block (container)
+  // Theme classes for code highlighting (tokens). These are generic.
+  // Specific styling is handled in globals.css for better theme mimicking.
   codeHighlight: {
-    'atrule': 'token_atrule', // Using simple class names, Tailwind will apply via globals.css
-    'attr': 'token_attr',
+    'atrule': 'token_atrule',
+    'attr': 'token_attr', // Covers attribute names
     'boolean': 'token_boolean',
     'builtin': 'token_builtin',
     'cdata': 'token_cdata',
     'char': 'token_char',
-    'class': 'token_class', // Keep 'class' if it doesn't conflict, or use 'class-name'
+    'class': 'token_class',
     'class-name': 'token_class-name',
     'comment': 'token_comment',
     'constant': 'token_constant',
@@ -63,20 +64,24 @@ const theme: EditorThemeClasses = {
     'punctuation': 'token_punctuation',
     'regex': 'token_regex',
     'selector': 'token_selector',
-    'string': 'token_string',
+    'string': 'token_string', // Covers attribute values if they are strings
     'symbol': 'token_symbol',
     'tag': 'token_tag',
     'url': 'token_url',
     'variable': 'token_variable',
+    'attr-value': 'token_attr-value', // Explicitly for attribute values
   },
-  table: 'w-full my-2 border-collapse border border-input', // Lexical__table in globals
-  tableCell: 'border border-input p-2 align-top', // Lexical__tableCell
-  tableCellHeader: 'bg-muted font-semibold border border-input p-2 text-left align-top', // Lexical__tableCellHeader
-  tableRow: 'border-b border-input', // Lexical__tableRow
-  horizontalRule: 'my-4 border-t border-border', // Lexical__horizontalRule
-  collapsibleContainer: 'my-2 border border-input rounded', // Collapsible__container
-  collapsibleTitle: 'p-2 bg-muted cursor-pointer font-medium hover:bg-accent/20', // Collapsible__title
-  collapsibleContent: 'p-2 border-t border-input', // Collapsible__content
+  table: 'Lexical__table', // w-full my-2 border-collapse border border-input in globals
+  tableCell: 'Lexical__tableCell', // border border-input p-2 align-top in globals
+  tableCellHeader: 'Lexical__tableCellHeader', // bg-muted font-semibold border border-input p-2 text-left align-top in globals
+  tableRow: 'Lexical__tableRow', // border-b border-input in globals
+  horizontalRule: 'Lexical__horizontalRule', // my-4 border-t border-border in globals
+  // Collapsible theme classes removed as package failed to install
+  // collapsibleContainer: 'Collapsible__container',
+  // collapsibleTitle: 'Collapsible__title',
+  // collapsibleContent: 'Collapsible__content',
 };
 
 export default theme;
+
+    
