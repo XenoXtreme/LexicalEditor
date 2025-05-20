@@ -1,3 +1,4 @@
+
 "use client";
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
@@ -21,11 +22,11 @@ import {
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
-import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, CODE_LANGUAGE_MAP } from '@lexical/code';
+import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, CODE_LANGUAGE_MAP, $createCodeNode } from '@lexical/code';
 import { $getNearestNodeOfType, mergeRegister } from '@lexical/utils';
-import { $isHeadingNode, $isQuoteNode } from '@lexical/rich-text';
+import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingTagType } from '@lexical/rich-text';
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -43,6 +44,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from '@/hooks/use-toast';
+import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
+import { $setBlocksType } from '@lexical/selection';
+
 
 const LowPriority = 1;
 
@@ -62,9 +79,6 @@ const blockTypeToBlockName = {
   h1: 'Heading 1',
   h2: 'Heading 2',
   h3: 'Heading 3',
-  h4: 'Heading 4',
-  h5: 'Heading 5',
-  h6: 'Heading 6',
   ol: 'Numbered List',
   paragraph: 'Normal',
   quote: 'Quote',
@@ -105,6 +119,11 @@ export default function ToolbarPlugin() {
   const [isCode, setIsCode] = useState(false);
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
+  const [isGenerateTextDialogOpen, setIsGenerateTextDialogOpen] = useState(false);
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [isGeneratingText, setIsGeneratingText] = useState(false);
+  const { toast } = useToast();
+
   const updateToolbar = useCallback(() => {
     const selection = $getSelection();
     if ($isRangeSelection(selection)) {
@@ -129,7 +148,11 @@ export default function ToolbarPlugin() {
       setIsStrikethrough(selection.hasFormat('strikethrough'));
       setIsCode(selection.hasFormat('code'));
       
-      setElementFormat(element.getFormatType() || 'left');
+      const nativeSelection = window.getSelection();
+      // Ensure nativeSelection and its properties are not null before accessing
+      const formatType = element.getFormatType ? element.getFormatType() : 'left';
+      setElementFormat(formatType);
+
 
       const node = getSelectedNode(selection);
       const parent = node.getParent();
@@ -144,6 +167,10 @@ export default function ToolbarPlugin() {
         } else {
           const type = $isHeadingNode(element)
             ? element.getTag()
+            : $isQuoteNode(element) 
+            ? 'quote'
+            : $isCodeNode(element)
+            ? 'code'
             : element.getType();
           if (type in blockTypeToBlockName) {
             setBlockType(type as keyof typeof blockTypeToBlockName);
@@ -201,75 +228,42 @@ export default function ToolbarPlugin() {
     }
   }, [editor, isLink]);
 
-  const formatParagraph = () => {
-    if (blockType !== 'paragraph') {
-      editor.update(() => {
-        const selection = $getSelection();
-        if ($isRangeSelection(selection)) {
-          $getSelection()?.getNodes().forEach(node => {
-            const element = node.getParentOrThrow();
-            if (!$isListItemNode(element) && !$isCodeNode(element)) {
-               element.setFormat('');
-            }
-           });
-          selection.insertNodes([$createParagraphNode()]);
-        }
-      });
-    }
-  };
-
-  const formatHeading = (headingSize: 'h1' | 'h2' | 'h3') => {
-    if (blockType !== headingSize) {
-      editor.update(() => {
-        const selection = $getSelection();
-        if ($isRangeSelection(selection)) {
-          selection.insertNodes([ (headingSize === 'h1' ? $createParagraphNode().setFormat('h1') : headingSize === 'h2' ? $createParagraphNode().setFormat('h2') : $createParagraphNode().setFormat('h3')) ]);
-          // A better way for headings is to use FORMAT_ELEMENT_COMMAND or specific heading node creation,
-          // or transform existing paragraph. For simplicity, this inserts a new node.
-          // Actual heading creation might be: $setBlocksType(selection, () => $createHeadingNode(headingSize));
-        }
-      });
-    }
-  };
-
-  const formatBulletList = () => {
-    if (blockType !== 'ul') {
-      editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-    } else {
-      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-    }
-  };
-
-  const formatNumberedList = () => {
-    if (blockType !== 'ol') {
-      editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-    } else {
-      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-    }
-  };
-
-  const formatQuote = () => {
-     if (blockType !== 'quote') {
-        editor.update(() => {
-          const selection = $getSelection();
-          if ($isRangeSelection(selection)) {
-            // This is a simplified quote toggle. A more robust one would use $setBlocksType.
-            selection.insertNodes([$createParagraphNode().setFormat('quote')]);
-          }
-        });
-      }
-  };
+  const formatBlock = (type: keyof typeof blockTypeToBlockName) => {
+    if (blockType === type && type !== 'paragraph') return; // Avoid reformatting to the same type unless it's to clear
   
-  const formatCode = () => {
-    if (blockType !== 'code') {
-      editor.update(() => {
-        const selection = $getSelection();
-        if ($isRangeSelection(selection)) {
-           // This is simplified. Proper code block creation involves $createCodeNode.
-           selection.insertNodes([$createParagraphNode().setFormat('codeblock')]); // Assuming 'codeblock' is a valid format or custom node type
-        }
-      });
-    }
+    editor.update(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+  
+      switch (type) {
+        case 'paragraph':
+          $setBlocksType(selection, () => $createParagraphNode());
+          break;
+        case 'h1':
+        case 'h2':
+        case 'h3':
+          $setBlocksType(selection, () => $createHeadingNode(type as HeadingTagType));
+          break;
+        case 'ul':
+          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+          break;
+        case 'ol':
+          editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+          break;
+        case 'quote':
+           // For quote, Lexical's $setBlocksType might need custom handling if it doesn't directly support 'quote' type with $createQuoteNode.
+           // A common approach is to wrap selected paragraphs in a quote or transform them.
+           // This example uses a simplified approach which might replace content.
+           // For a robust solution, check Lexical examples for quote block transformations.
+          $setBlocksType(selection, () => $createParagraphNode().setFormat('quote')); // This sets format, for true QuoteNode, use $createQuoteNode
+          break;
+        case 'code':
+          $setBlocksType(selection, () => $createCodeNode(codeLanguage || undefined));
+          break;
+        default:
+          break;
+      }
+    });
   };
 
   const onCodeLanguageSelect = useCallback(
@@ -289,7 +283,61 @@ export default function ToolbarPlugin() {
 
   const formatElement = (format: ElementFormatType) => {
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, format);
-    setElementFormat(format); // Eagerly update UI
+    setElementFormat(format); 
+  };
+
+  const handleGenerateText = async () => {
+    if (!generationPrompt.trim() || isGeneratingText) return;
+
+    setIsGeneratingText(true);
+    try {
+      const input: GenerateTextInput = { prompt: generationPrompt };
+      const result = await generateText(input);
+
+      if (result && result.generatedText) {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            selection.insertText(result.generatedText);
+          }
+        });
+        toast({
+          title: "Text Generated",
+          description: "AI-generated text has been inserted into the editor.",
+        });
+      } else if (result && result.generatedText === "") {
+        // AI returned empty string, could be a valid response or a filtered one
+         toast({
+          variant: "default",
+          title: "AI Response",
+          description: "The AI returned an empty response. This might be due to content filters or the nature of the prompt.",
+        });
+      }
+      else {
+        throw new Error("AI returned an unexpected or empty response.");
+      }
+    } catch (error) {
+      console.error("AI Text Generation error:", error);
+      let title = "AI Text Generation Failed";
+      let description = "An unexpected error occurred.";
+      if (error instanceof Error) {
+        if (error.message.includes("429 Too Many Requests")) {
+          title = "AI Rate Limit Exceeded";
+          description = "You've made too many requests for AI text generation. Please try again later.";
+        } else {
+          description = error.message;
+        }
+      }
+      toast({
+        variant: "destructive",
+        title: title,
+        description: description,
+      });
+    } finally {
+      setIsGeneratingText(false);
+      setIsGenerateTextDialogOpen(false);
+      setGenerationPrompt(''); 
+    }
   };
 
 
@@ -310,30 +358,30 @@ export default function ToolbarPlugin() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={formatParagraph} className={blockType === 'paragraph' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('paragraph')} className={blockType === 'paragraph' ? 'bg-accent' : ''}>
             <Pilcrow className="mr-2 h-4 w-4" /> Normal
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatHeading('h1')} className={blockType === 'h1' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h1')} className={blockType === 'h1' ? 'bg-accent' : ''}>
             <Heading1 className="mr-2 h-4 w-4" /> Heading 1
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatHeading('h2')} className={blockType === 'h2' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h2')} className={blockType === 'h2' ? 'bg-accent' : ''}>
             <Heading2 className="mr-2 h-4 w-4" /> Heading 2
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => formatHeading('h3')} className={blockType === 'h3' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('h3')} className={blockType === 'h3' ? 'bg-accent' : ''}>
             <Heading3 className="mr-2 h-4 w-4" /> Heading 3
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={formatBulletList} className={blockType === 'ul' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('ul')} className={blockType === 'ul' ? 'bg-accent' : ''}>
             <List className="mr-2 h-4 w-4" /> Bullet List
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={formatNumberedList} className={blockType === 'ol' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('ol')} className={blockType === 'ol' ? 'bg-accent' : ''}>
             <ListOrdered className="mr-2 h-4 w-4" /> Numbered List
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={formatQuote} className={blockType === 'quote' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('quote')} className={blockType === 'quote' ? 'bg-accent' : ''}>
             <Quote className="mr-2 h-4 w-4" /> Quote
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={formatCode} className={blockType === 'code' ? 'bg-accent' : ''}>
+          <DropdownMenuItem onClick={() => formatBlock('code')} className={blockType === 'code' ? 'bg-accent' : ''}>
             <Code className="mr-2 h-4 w-4" /> Code Block
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -348,6 +396,7 @@ export default function ToolbarPlugin() {
             {Object.entries(CODE_LANGUAGE_FRIENDLY_NAME_MAP).map(([value, label]) => (
               <SelectItem key={value} value={value}>{label}</SelectItem>
             ))}
+             <SelectItem value="">plain</SelectItem> {/* For plain text in code block */}
           </SelectContent>
         </Select>
       )}
@@ -371,8 +420,65 @@ export default function ToolbarPlugin() {
       <Button variant={isLink ? 'secondary' : 'ghost'} size="icon" onClick={insertLink} aria-label="Insert Link">
         <Link2 className="h-4 w-4" />
       </Button>
-       <Separator orientation="vertical" className="h-6 mx-1" />
-       <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left">
+
+      <Dialog open={isGenerateTextDialogOpen} onOpenChange={(open) => {
+        if (!open) { 
+          setGenerationPrompt('');
+          setIsGeneratingText(false); 
+        }
+        setIsGenerateTextDialogOpen(open);
+      }}>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Generate Text with AI">
+            <Sparkles className="h-4 w-4" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Text with AI</DialogTitle>
+            <DialogDescription>
+              Enter a prompt below and the AI will generate text for you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="prompt-input" className="text-right col-span-1">
+                Prompt
+              </Label>
+              <Input
+                id="prompt-input"
+                value={generationPrompt}
+                onChange={(e) => setGenerationPrompt(e.target.value)}
+                className="col-span-3"
+                placeholder="e.g., Write a short story about a brave knight..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && generationPrompt.trim()) {
+                    e.preventDefault();
+                    handleGenerateText();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+             <DialogClose asChild>
+                <Button type="button" variant="outline">
+                 Cancel
+                </Button>
+            </DialogClose>
+            <Button 
+                type="button" 
+                onClick={handleGenerateText} 
+                disabled={isGeneratingText || !generationPrompt.trim()}
+            >
+              {isGeneratingText ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>) : "Generate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left">
         <AlignLeft className="h-4 w-4" />
       </Button>
       <Button variant={elementFormat === 'center' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('center')} aria-label="Align Center">
