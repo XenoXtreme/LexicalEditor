@@ -33,11 +33,11 @@ import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace i
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin'; 
+import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper
+  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -68,7 +68,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; 
+import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
 import { createCommand, type LexicalCommand } from 'lexical';
 
 
@@ -161,13 +161,13 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType }[] = [
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType; shortcut?: string }[] = [
   { value: 'left', label: 'Left Align', icon: AlignLeft },
   { value: 'center', label: 'Center Align', icon: AlignCenter },
   { value: 'right', label: 'Right Align', icon: AlignRight },
   { value: 'justify', label: 'Justify Align', icon: AlignJustify },
-  { value: 'start', label: 'Start Align', icon: AlignLeft }, 
-  { value: 'end', label: 'End Align', icon: AlignRight },   
+  { value: 'start', label: 'Start Align', icon: AlignLeft },
+  { value: 'end', label: 'End Align', icon: AlignRight },
 ];
 
 
@@ -204,14 +204,16 @@ export default function ToolbarPlugin() {
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
+  const [isSubscript, setIsSubscript] = useState(false);
+  const [isSuperscript, setIsSuperscript] = useState(false);
   const [isCode, setIsCode] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(false);
+  const [isHighlight, setIsHighlight] = useState(false); // For default highlight format
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
   const [currentFontFamily, setCurrentFontFamily] = useState<string>(`var(--font-roboto), sans-serif`);
   const [currentTextColor, setCurrentTextColor] = useState<string>('inherit');
-  const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent');
+  const [currentHighlightColor, setCurrentHighlightColor] = useState<string>('transparent'); // For color picker
 
   const [isInsertTableDialogOpen, setIsInsertTableDialogOpen] = useState(false);
   const [tableRows, setTableRows] = useState('3');
@@ -253,8 +255,10 @@ export default function ToolbarPlugin() {
       setIsItalic(selection.hasFormat('italic'));
       setIsUnderline(selection.hasFormat('underline'));
       setIsStrikethrough(selection.hasFormat('strikethrough'));
+      setIsSubscript(selection.hasFormat('subscript'));
+      setIsSuperscript(selection.hasFormat('superscript'));
       setIsCode(selection.hasFormat('code'));
-      setIsHighlight(selection.hasFormat('highlight'));
+      setIsHighlight(selection.hasFormat('highlight')); // For default highlight format
 
       // Update links
       const node = getSelectedNode(selection);
@@ -268,27 +272,24 @@ export default function ToolbarPlugin() {
       // Update block type
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
-        if ($isListNode(element)) {
-          const parentList = $getNearestNodeOfType<ListNode>(
-            anchorNode,
-            ListNode,
-          );
-          const type = parentList
-            ? parentList.getListType()
-            : element.getListType();
+         if ($isListNode(element)) {
+          const parentList = $getNearestNodeOfType<ListNode>(anchorNode, ListNode);
+          const type = parentList ? parentList.getListType() : (element as ListNode).getListType();
           setBlockType(type);
         } else {
           const type = $isHeadingNode(element)
             ? element.getTag()
-            : element.getType();
-          if (type in blockTypeToBlockName) {
-            setBlockType(type);
+            : ($isCodeNode(element) ? 'code' : (isQuoteNodeLexical(element) ? 'quote' : element.getType()));
+
+          if (type in blockTypeToBlockName || supportedBlockTypes.has(type)) {
+             setBlockType(type);
+          } else {
+            setBlockType('paragraph'); // Default if unknown
           }
+
           if ($isCodeNode(element)) {
-            const language =
-              element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
-            setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext'); // Ensure code language is set if it's a code block
-            return;
+            const language = element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
+            setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext');
           }
         }
       }
@@ -312,12 +313,11 @@ export default function ToolbarPlugin() {
       if (typeof (element as any).getFormatType === 'function') {
         setElementFormat((element as any).getFormatType());
       } else {
-        // Fallback for nodes that might not have getFormatType, e.g., root or simple paragraphs
         let parentWithFormat = $findMatchingParent(anchorNode, (n) => typeof (n as any).getFormatType === 'function');
         if (parentWithFormat && typeof (parentWithFormat as any).getFormatType === 'function') {
           setElementFormat((parentWithFormat as any).getFormatType());
         } else {
-          setElementFormat('left'); // Default alignment
+          setElementFormat('left');
         }
       }
     }
@@ -399,12 +399,11 @@ export default function ToolbarPlugin() {
         const url = window.prompt(isCurrentlyLink ? 'Edit link URL (leave empty to remove):' : 'Enter link URL:', existingUrl || 'https://');
         
         if (url === null) { 
-            return; // User cancelled
+            return;
         }
         if (url === '' && isCurrentlyLink) { 
-            editor.dispatchCommand(TOGGLE_LINK_COMMAND, null); // Remove link
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
         } else if (url !== '') {
-            // Ensure protocol is present if not already
             const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
         }
@@ -418,23 +417,30 @@ export default function ToolbarPlugin() {
       
       const currentBlockIsList = ['ul', 'ol', 'check'].includes(blockType);
 
-      // If trying to apply the same list type again, or paragraph to a list, remove list
       if ((blockType === type && currentBlockIsList) || (type === 'paragraph' && currentBlockIsList)) {
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-        if (type !== 'paragraph') { // If it wasn't specifically to turn into paragraph, re-apply intended format after removing list
-           // This timeout helps ensure the REMOVE_LIST_COMMAND processes before the new format is applied
+        if (type !== 'paragraph' && !currentBlockIsList) { // if it wasn't list before, re-apply intended
            setTimeout(() => {
             editor.update(() => {
                 const newSelection = $getSelection();
-                if ($isRangeSelection(newSelection)) { // Re-fetch selection
+                if ($isRangeSelection(newSelection)) {
                      applySpecificBlockFormat(type, newSelection);
                 }
             });
            }, 0);
+        } else if (type !== 'paragraph' && blockType !== type) { // if it was a different list type
+             setTimeout(() => {
+                editor.update(() => {
+                    const newSelection = $getSelection();
+                    if ($isRangeSelection(newSelection)) {
+                        applySpecificBlockFormat(type, newSelection); // apply new list type
+                    }
+                });
+            }, 0);
         }
         return;
       }
-      // If switching from one list type to another, or list to non-list (and not paragraph)
+
       if (currentBlockIsList && type !== 'paragraph' && !['ul', 'ol', 'check'].includes(type)) {
          editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
          setTimeout(() => {
@@ -452,7 +458,7 @@ export default function ToolbarPlugin() {
     });
   };
 
-  const applySpecificBlockFormat = (type: string, selection: any) => { // selection type any for broader compatibility
+  const applySpecificBlockFormat = (type: string, selection: any) => {
      if (type === 'paragraph') {
         LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
       } else if (type === 'h1' || type === 'h2' || type === 'h3') {
@@ -475,7 +481,6 @@ export default function ToolbarPlugin() {
     (value: string) => {
       editor.update(() => {
         const langToSet = value === 'plaintext' ? undefined : value;
-        // setCodeLanguage(value); // This state will be updated by updateToolbar based on node
         
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
@@ -484,10 +489,7 @@ export default function ToolbarPlugin() {
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet as string);
             } else if (blockType === 'code') { 
-                 // This case might be redundant if updateToolbar sets blockType correctly
-                 // And then formatBlock('code') would be called which uses the current codeLanguage state.
-                 // Direct application here can be complex if selection isn't directly in a code block yet.
-                 // Relying on formatBlock after setting codeLanguage state is safer.
+                 // Handled by formatBlock if this is part of creating a new code block
             }
         }
       });
@@ -505,7 +507,6 @@ export default function ToolbarPlugin() {
     } else {
         effectiveFormat = format as ElementFormatType;
     }
-    // setElementFormat(effectiveFormat); // State updated by updateToolbar
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, effectiveFormat);
   };
 
@@ -522,19 +523,15 @@ export default function ToolbarPlugin() {
   );
 
   const onFontFamilySelect = (family: string) => {
-    // setCurrentFontFamily(family); // State updated by updateToolbar
     applyStyleText({ 'font-family': family });
   }
   const onFontSizeSelect = (size: string) => {
-    // setCurrentFontSize(size); // State updated by updateToolbar
     applyStyleText({ 'font-size': size });
   }
   const onTextColorSelect = (color: string) => {
-    // setCurrentTextColor(color); // State updated by updateToolbar
     applyStyleText({ color });
   }
   const onHighlightColorSelect = (color: string) => {
-    // setCurrentHighlightColor(color); // State updated by updateToolbar
     applyStyleText({ 'background-color': color });
   }
 
@@ -561,8 +558,8 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues
-        console.warn("$clearFormatting from @lexical/selection is currently commented out. Attempting manual style reset.");
+        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues, using manual reset
+        console.warn("$clearFormatting from @lexical/selection is commented out. Attempting manual style reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
           'font-family': `var(--font-roboto), sans-serif`, 
@@ -573,6 +570,15 @@ export default function ToolbarPlugin() {
           'font-style': '',                  
           'text-decoration': '',             
         });
+        // Clear bold, italic, underline, strikethrough, subscript, superscript, code, highlight formats
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold'); // Toggles off if on
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight'); // Toggles off default highlight
         
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
@@ -790,8 +796,11 @@ export default function ToolbarPlugin() {
       <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
         <Underline className="h-4 w-4" />
       </Button>
-       <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
-        <Strikethrough className="h-4 w-4" />
+      <Button variant={isSubscript ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')} aria-label="Format Subscript" title="Subscript">
+        <Subscript className="h-4 w-4" />
+      </Button>
+      <Button variant={isSuperscript ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')} aria-label="Format Superscript" title="Superscript">
+        <Superscript className="h-4 w-4" />
       </Button>
       <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
         <Code className="h-4 w-4" />
@@ -838,11 +847,18 @@ export default function ToolbarPlugin() {
       
        <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Change Case">
+          <Button variant="ghost" size="icon" title="More text formatting">
             <CaseSensitive className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} className={isStrikethrough ? 'bg-accent text-accent-foreground' : ''}>
+            <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')} className={isHighlight ? 'bg-accent text-accent-foreground' : ''}>
+             <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
           <CaseLower className="mr-2 h-4 w-4" /> lowercase
           </DropdownMenuItem>
@@ -900,7 +916,7 @@ export default function ToolbarPlugin() {
       }}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="px-2 h-9 text-xs sm:text-sm justify-start" title="Insert">
+            <Button variant="ghost" className="px-2 h-9 text-sm sm:text-sm justify-start" title="Insert">
               <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
             </Button>
           </DropdownMenuTrigger>
@@ -989,14 +1005,14 @@ export default function ToolbarPlugin() {
           ))}
            <DropdownMenuItem
               onClick={() => formatElement('start')}
-              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''}  // 'start' effectively means 'left' in LTR
+              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''}
             >
               <AlignLeft className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Start Align</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => formatElement('end')}
-              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} // 'end' effectively means 'right' in LTR
+              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''}
             >
               <AlignRight className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">End Align</span>
@@ -1016,4 +1032,3 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
-
