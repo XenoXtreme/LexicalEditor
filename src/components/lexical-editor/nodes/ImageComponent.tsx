@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Image as ImageIcon, Trash2, Edit3, Check, X } from 'lucide-react';
+import NextImage from 'next/image'; // Using next/image
 
 // Helper function to safely check editor read-only state
 function isEditorReadOnly(editor: LexicalEditor | null | undefined): boolean {
@@ -42,10 +43,9 @@ function ImageResizer({
 }: {
   onResizeStart: () => void;
   onResizeEnd: (width: number, height: number) => void;
-  imageRef: React.RefObject<HTMLImageElement>;
+  imageRef: React.RefObject<HTMLImageElement | HTMLDivElement>; // HTMLDivElement for NextImage wrapper
   editor: LexicalEditor;
   nodeKey: NodeKey;
-  // showCaption and setShowCaption are removed as caption feature is not implemented
 }): JSX.Element {
   const controlWrapperRef = useRef<HTMLDivElement>(null);
   const userSelect = useRef({
@@ -81,16 +81,13 @@ function ImageResizer({
 
 
   useEffect(() => {
-    const image = imageRef.current;
-    if (image) {
-        editor.update(() => {
-            const node = $getNodeByKey(nodeKey) as ImageNode | null;
-            if ($isImageNode(node)) {
-               setCurrentAltText(node.getAltText());
-            }
-        });
-    }
-  }, [editor, imageRef, nodeKey]);
+    editor.update(() => {
+        const node = $getNodeByKey(nodeKey) as ImageNode | null;
+        if ($isImageNode(node)) {
+           setCurrentAltText(node.getAltText());
+        }
+    });
+  }, [editor, nodeKey]);
 
 
   const handlePointerDown = (
@@ -99,16 +96,18 @@ function ImageResizer({
   ) => {
     if (editorReadOnly) return; 
 
-    const image = imageRef.current;
+    const imageElement = imageRef.current; // This could be the NextImage wrapper or the img itself
     const controlWrapper = controlWrapperRef.current;
 
-    if (image && controlWrapper) {
+    if (imageElement && controlWrapper) {
       event.preventDefault();
-      const { width, height } = image.getBoundingClientRect();
+      const targetImage = imageElement.querySelector('img') || imageElement as HTMLImageElement; // Get the actual img element
+      const { width, height } = targetImage.getBoundingClientRect();
+      
       const positioning = positioningRef.current;
       positioning.startWidth = width;
       positioning.startHeight = height;
-      positioning.ratio = width / height; // Keep for potential aspect ratio lock later
+      positioning.ratio = width / height; 
       positioning.currentWidth = width;
       positioning.currentHeight = height;
       positioning.startX = event.clientX;
@@ -135,43 +134,49 @@ function ImageResizer({
   };
 
   const handlePointerMove = (event: PointerEvent) => {
-    const image = imageRef.current;
+    const imageElement = imageRef.current;
     const positioning = positioningRef.current;
 
-    if (image && positioning.isResizing) {
+    if (imageElement && positioning.isResizing) {
+      const targetImage = imageElement.querySelector('img') || imageElement as HTMLImageElement;
       let newWidth = positioning.startWidth;
       let newHeight = positioning.startHeight;
 
       const diffX = event.clientX - positioning.startX;
       const diffY = event.clientY - positioning.startY;
 
-      // Directions: 0:NW, 1:N, 2:NE, 3:W, 4:E, 5:SW, 6:S, 7:SE
-      if ([0, 3, 5].includes(positioning.direction)) { // West edge
+      if ([0, 3, 5].includes(positioning.direction)) { 
         newWidth -= diffX;
       }
-      if ([2, 4, 7].includes(positioning.direction)) { // East edge
+      if ([2, 4, 7].includes(positioning.direction)) { 
         newWidth += diffX;
       }
-      if ([0, 1, 2].includes(positioning.direction)) { // North edge
+      if ([0, 1, 2].includes(positioning.direction)) { 
         newHeight -= diffY;
       }
-      if ([5, 6, 7].includes(positioning.direction)) { // South edge
+      if ([5, 6, 7].includes(positioning.direction)) { 
         newHeight += diffY;
       }
       
-      // Min size
       const minSize = 50;
       positioning.currentWidth = Math.max(newWidth, minSize); 
       positioning.currentHeight = Math.max(newHeight, minSize); 
 
-      image.style.width = `${positioning.currentWidth}px`;
-      image.style.height = `${positioning.currentHeight}px`;
+      // For NextImage, we might need to update its parent wrapper if it controls size
+      // For a simple <img>, this is direct.
+      targetImage.style.width = `${positioning.currentWidth}px`;
+      targetImage.style.height = `${positioning.currentHeight}px`;
+       // If NextImage parent wrapper needs to be sized
+      if (imageElement !== targetImage && imageElement instanceof HTMLElement) {
+        imageElement.style.width = `${positioning.currentWidth}px`;
+        imageElement.style.height = `${positioning.currentHeight}px`;
+      }
     }
   };
   const handlePointerUp = () => {
-    const image = imageRef.current;
+    const imageElement = imageRef.current;
     const positioning = positioningRef.current;
-    if (image && positioning.isResizing) {
+    if (imageElement && positioning.isResizing) {
       const width = positioning.currentWidth;
       const height = positioning.currentHeight;
       positioning.isResizing = false;
@@ -263,7 +268,7 @@ export default function ImageComponent({
   width,
   height,
   nodeKey,
-  showCaption, // Kept for potential future use, but not active
+  showCaption, 
   caption, 
   resizable,
 }: {
@@ -276,13 +281,14 @@ export default function ImageComponent({
   caption?: LexicalEditor;
   resizable?: boolean;
 }): JSX.Element {
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const imageRef = useRef<HTMLDivElement | null>(null); // Changed to HTMLDivElement for NextImage wrapper
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [editor] = useLexicalComposerContext();
   const [selection, setSelection] = useState<any>(null); 
   const [isResizing, setIsResizing] = useState(false);
 
-  const editorReadOnly = isEditorReadOnly(editor);
+  const editorActuallyReadOnly = editor && typeof editor.isReadOnly === 'function' ? editor.isReadOnly() : true;
+
 
   const onDelete = useCallback(
     (payload: KeyboardEvent) => {
@@ -311,11 +317,12 @@ export default function ImageComponent({
     (event: KeyboardEvent) => {
       if (isSelected) {
         clearSelection();
+        setSelected(false); // Explicitly deselect
         return true;
       }
       return false;
     },
-    [isSelected, clearSelection],
+    [isSelected, clearSelection, setSelected],
   );
 
   useEffect(() => {
@@ -331,7 +338,7 @@ export default function ImageComponent({
         (payload) => {
           const event = payload;
           if (isResizing) return true; 
-          if (event.target === imageRef.current) {
+          if (imageRef.current && imageRef.current.contains(event.target as Node)) {
             if (event.shiftKey) {
               setSelected(!isSelected);
             } else {
@@ -347,8 +354,7 @@ export default function ImageComponent({
       editor.registerCommand(
         DRAGSTART_COMMAND,
         (event) => {
-          if (event.target === imageRef.current) {
-            // Prevent native drag for selected images if we're handling selection/resizing
+          if (imageRef.current && imageRef.current.contains(event.target as Node)) {
              if(isSelected || resizable) event.preventDefault();
             return true;
           }
@@ -375,7 +381,7 @@ export default function ImageComponent({
     onEnter,
     onEscape,
     setSelected,
-    resizable, // Added resizable
+    resizable,
   ]);
 
 
@@ -385,6 +391,17 @@ export default function ImageComponent({
 
   const onResizeEnd = useCallback(
     (newWidth: number, newHeight: number) => {
+      // Making sure that there is an editor instance.
+      if (!editor) {
+        return;
+      }
+      
+      // Preventing updates when the editor is in read-only mode.
+      if (editorActuallyReadOnly) {
+          setIsResizing(false);
+          return;
+      }
+
       if (isResizing) { 
         setIsResizing(false);
         editor.update(() => {
@@ -395,46 +412,55 @@ export default function ImageComponent({
         });
       }
     },
-    [editor, nodeKey, isResizing], 
+    [editor, nodeKey, isResizing, editorActuallyReadOnly], 
   );
 
-  // setShowCaptionHandler is removed as caption feature is not implemented
 
-  const W = typeof width === 'number' ? width : (imageRef.current?.naturalWidth || 400); 
-  const H = typeof height === 'number' ? height : (imageRef.current?.naturalHeight || 300); 
+  const imageWidth = typeof width === 'number' ? width : (resizable ? 400 : undefined); // Default width for resizable if not set
+  const imageHeight = typeof height === 'number' ? height : (resizable && imageWidth ? imageWidth * 0.75 : undefined); // Default aspect ratio
 
-  const currentImageWidth = typeof width === 'number' ? `${width}px` : 'auto';
-  const currentImageHeight = typeof height === 'number' ? `${height}px` : 'auto';
 
   return (
     <Suspense fallback={null}>
-      <div className={cn('relative inline-block group', isSelected && 'outline outline-2 outline-primary outline-offset-2 rounded-sm')} draggable={!editorReadOnly && isSelected}>
-        <img
-          ref={imageRef}
+      <div 
+        className={cn('relative inline-block group', isSelected && !editorActuallyReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm')} 
+        draggable={!editorActuallyReadOnly && isSelected}
+        ref={imageRef} // Attach ref to the wrapper div for NextImage
+        style={{ 
+          width: typeof imageWidth === 'number' ? `${imageWidth}px` : 'auto',
+          height: typeof imageHeight === 'number' ? `${imageHeight}px` : 'auto',
+          cursor: isSelected && resizable && !editorActuallyReadOnly && !isResizing ? 'grab' : (isResizing ? 'grabbing': 'default')
+        }}
+      >
+        <NextImage
           src={src}
           alt={altText}
+          width={imageWidth || 400} // NextImage requires width/height, provide defaults
+          height={imageHeight || 300}
           className={cn(
-            'max-w-full h-auto block', 
-            resizable && !editorReadOnly && isSelected && 'cursor-grab',
-            resizable && !editorReadOnly && isResizing && 'cursor-grabbing',
+            'block', // Removed max-w-full and h-auto as NextImage handles this with layout or fixed sizes
+            resizable && !editorActuallyReadOnly && isSelected && 'cursor-grab',
+            resizable && !editorActuallyReadOnly && isResizing && 'cursor-grabbing',
           )}
-          style={{
-            width: currentImageWidth,
-            height: currentImageHeight,
+          style={{ 
+            // Let NextImage handle the internal sizing. The parent div now controls apparent size.
+            // If you were using a plain <img>, you'd set width/height here.
           }}
           data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'} 
+          unoptimized={src.startsWith('https://placehold.co')} // Avoid optimization for placeholders
         />
-        {isSelected && resizable && !editorReadOnly && (
+        {isSelected && resizable && !editorActuallyReadOnly && (
           <ImageResizer
             editor={editor}
-            imageRef={imageRef}
+            imageRef={imageRef as React.RefObject<HTMLDivElement>} // Pass the wrapper div ref
             nodeKey={nodeKey}
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
           />
         )}
       </div>
-      {/* {showCaption && caption && <LexicalNestedComposer initialEditor={caption}><RichTextPlugin ... /></LexicalNestedComposer>} */}
     </Suspense>
   );
 }
+
+    
