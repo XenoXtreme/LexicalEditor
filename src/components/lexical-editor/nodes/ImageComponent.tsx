@@ -20,16 +20,13 @@ import {
 } from 'lexical';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import { $isImageNode, ImageNode } from './ImageNode.tsx'; // Assuming ImageNode is in the same directory
-import NextImage from 'next/image'; // Using next/image for optimization
+import { $isImageNode, ImageNode } from './ImageNode.tsx';
+import NextImage from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { Image as ImageIcon, Trash2, Edit3, Check, X } from 'lucide-react'; // Icons
-
-// TODO: Resizer logic can be complex. This is a simplified version.
-// Consider using a library or a more robust implementation for production.
+import { Image as ImageIcon, Trash2, Edit3, Check, X } from 'lucide-react';
 
 function ImageResizer({
   onResizeStart,
@@ -75,9 +72,8 @@ function ImageResizer({
     startY: 0,
   });
 
-  const editorSetReadOnly = editor.isReadOnly(); // Check if editor is read-only
-
-  const draggable = !editorSetReadOnly; // Make draggable only if editor is not read-only
+  const editorIsActuallyReadOnly = editor && typeof editor.isReadOnly === 'function' ? editor.isReadOnly() : true; // Default to true (read-only) for safety
+  const draggableResizerHandles = !editorIsActuallyReadOnly;
 
   const [isEditingAlt, setIsEditingAlt] = useState(false);
   const [currentAltText, setCurrentAltText] = useState('');
@@ -100,7 +96,7 @@ function ImageResizer({
     event: React.PointerEvent<HTMLDivElement>,
     direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7,
   ) => {
-    if (!draggable) return; // Prevent interaction if not draggable
+    if (!draggableResizerHandles) return; 
 
     const image = imageRef.current;
     const controlWrapper = controlWrapperRef.current;
@@ -148,22 +144,14 @@ function ImageResizer({
       const diffX = event.clientX - positioning.startX;
       const diffY = event.clientY - positioning.startY;
 
-      // Basic logic - can be enhanced for diagonal resizing
-      if (positioning.direction === 0 || positioning.direction === 2) { // Horizontal
+      if (positioning.direction === 0 || positioning.direction === 2) { 
         newWidth += (positioning.direction === 0 ? -1 : 1) * diffX;
-      } else if (positioning.direction === 1 || positioning.direction === 3) { // Vertical
+      } else if (positioning.direction === 1 || positioning.direction === 3) { 
         newHeight += (positioning.direction === 1 ? -1 : 1) * diffY;
       }
-      // Add more conditions for diagonal resizing if needed
-
-      // Maintain aspect ratio (optional, can be toggled)
-      // if (newWidth / newHeight !== positioning.ratio) {
-      //   newWidth = newHeight * positioning.ratio;
-      // }
-
-
-      positioning.currentWidth = Math.max(newWidth, 50); // Min width 50px
-      positioning.currentHeight = Math.max(newHeight, 50); // Min height 50px
+      
+      positioning.currentWidth = Math.max(newWidth, 50); 
+      positioning.currentHeight = Math.max(newHeight, 50); 
 
       image.style.width = `${positioning.currentWidth}px`;
       image.style.height = `${positioning.currentHeight}px`;
@@ -176,7 +164,7 @@ function ImageResizer({
       const width = positioning.currentWidth;
       const height = positioning.currentHeight;
       positioning.isResizing = false;
-      onResizeEnd(width, height); // Call onResizeEnd with final dimensions
+      onResizeEnd(width, height); 
 
       document.body.style.setProperty(
         '-webkit-user-select',
@@ -210,9 +198,8 @@ function ImageResizer({
 
   return (
     <div ref={controlWrapperRef} className="absolute inset-0 z-10">
-      {!editorSetReadOnly && (
+      {!editorIsActuallyReadOnly && (
         <>
-         {/* Alt text editing UI */}
          <div className="absolute top-2 left-2 bg-background/80 p-1 rounded shadow-md flex items-center gap-1 text-xs">
             {isEditingAlt ? (
               <>
@@ -237,8 +224,7 @@ function ImageResizer({
             )}
           </div>
 
-          {/* Resizer handles */}
-          {[0, 1, 2, 3, 4, 5, 6, 7].map((direction) => (
+          {draggableResizerHandles && [0, 1, 2, 3, 4, 5, 6, 7].map((direction) => (
             <div
               key={direction}
               className="absolute bg-primary border border-primary-foreground rounded-full w-3 h-3 opacity-80 hover:opacity-100"
@@ -248,8 +234,7 @@ function ImageResizer({
                 right: direction % 3 === 2 ? '-4px' : undefined,
                 top: Math.floor(direction / 3) === 0 ? '-4px' : Math.floor(direction / 3) === 1 ? 'calc(50% - 6px)' : undefined,
                 bottom: Math.floor(direction / 3) === 2 ? '-4px' : undefined,
-                // Hide center handles if not needed for design
-                display: (direction === 1 || direction === 3 || direction === 4 || direction === 6) ? 'block' : 'block', // Adjust based on desired handles
+                display: (direction === 1 || direction === 3 || direction === 4 || direction === 6) ? 'block' : 'block', 
               }}
               onPointerDown={(event) => handlePointerDown(event, direction as any)}
             />
@@ -268,7 +253,7 @@ export default function ImageComponent({
   height,
   nodeKey,
   showCaption,
-  caption, // LexicalEditor instance for the caption
+  caption, 
   resizable,
 }: {
   src: string;
@@ -283,7 +268,7 @@ export default function ImageComponent({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [editor] = useLexicalComposerContext();
-  const [selection, setSelection] = useState(null); // For managing Lexical selection
+  const [selection, setSelection] = useState(null); 
   const [isResizing, setIsResizing] = useState(false);
 
 
@@ -305,8 +290,7 @@ export default function ImageComponent({
 
   const onEnter = useCallback(
     (event: KeyboardEvent) => {
-      // Logic for handling Enter key, e.g., to edit caption or insert paragraph after
-      return false; // Placeholder
+      return false; 
     },
     [],
   );
@@ -334,7 +318,7 @@ export default function ImageComponent({
         CLICK_COMMAND,
         (payload) => {
           const event = payload;
-          if (isResizing) return true; // Prevent selection change during resize
+          if (isResizing) return true; 
           if (event.target === imageRef.current) {
             if (event.shiftKey) {
               setSelected(!isSelected);
@@ -352,7 +336,6 @@ export default function ImageComponent({
         DRAGSTART_COMMAND,
         (event) => {
           if (event.target === imageRef.current) {
-            // Prevent dragging behavior for read-only images or to avoid conflicts
             event.preventDefault();
             return true;
           }
@@ -388,7 +371,7 @@ export default function ImageComponent({
 
   const onResizeEnd = useCallback(
     (newWidth: number, newHeight: number) => {
-      if (isResizing) { // Ensure this only runs if resizing was active
+      if (isResizing) { 
         setIsResizing(false);
         editor.update(() => {
           const node = $getNodeByKey(nodeKey);
@@ -398,10 +381,10 @@ export default function ImageComponent({
         });
       }
     },
-    [editor, nodeKey, isResizing], // Added isResizing dependency
+    [editor, nodeKey, isResizing], 
   );
 
-  const setShowCaption = (show: boolean) => {
+  const setShowCaptionHandler = (show: boolean) => { // Renamed to avoid conflict with prop name
      editor.update(() => {
       const node = $getNodeByKey(nodeKey) as ImageNode | null;
       if (node && $isImageNode(node)) {
@@ -411,24 +394,26 @@ export default function ImageComponent({
   };
 
 
-  const W = typeof width === 'number' ? width : 400; // Default width if 'inherit'
-  const H = typeof height === 'number' ? height : 300; // Default height if 'inherit'
+  const W = typeof width === 'number' ? width : 400; 
+  const H = typeof height === 'number' ? height : 300; 
+
+  const isDraggable = editor && typeof editor.isReadOnly === 'function' ? !editor.isReadOnly() : false;
 
   return (
     <Suspense fallback={null}>
-      <div className={cn('relative inline-block', isSelected && 'outline outline-2 outline-primary outline-offset-2 rounded-sm')} draggable={!editor.isReadOnly()}>
+      <div className={cn('relative inline-block', isSelected && 'outline outline-2 outline-primary outline-offset-2 rounded-sm')} draggable={isDraggable}>
         <NextImage
           ref={imageRef}
           src={src}
           alt={altText}
-          width={W} // next/image requires explicit numbers or "fill"
+          width={W} 
           height={H}
           className={cn('max-w-full h-auto block', resizable && 'cursor-grab')}
           style={{
             width: width === 'inherit' ? 'auto' : `${width}px`,
             height: height === 'inherit' ? 'auto' : `${height}px`,
           }}
-          data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'} // Add data-ai-hint
+          data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'} 
         />
         {isSelected && resizable && (
           <ImageResizer
@@ -438,12 +423,12 @@ export default function ImageComponent({
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
             showCaption={!!showCaption}
-            setShowCaption={setShowCaption}
+            setShowCaption={setShowCaptionHandler} // Pass renamed handler
           />
         )}
       </div>
-      {/* TODO: Implement caption rendering if showCaption is true and caption editor exists */}
       {/* {showCaption && caption && <LexicalNestedComposer initialEditor={caption}><RichTextPlugin ... /></LexicalNestedComposer>} */}
     </Suspense>
   );
 }
+
