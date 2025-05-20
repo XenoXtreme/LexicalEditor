@@ -109,7 +109,7 @@ body {
     @apply text-2xl font-semibold my-3;
   }
   .editor-heading-h3 {
-    @apply text-xl font-medium my-2;
+    @apply text-lg font-semibold my-1.5; /* Adjusted style for H3 */
   }
   .editor-quote {
     @apply border-l-4 border-accent pl-4 italic my-2 py-1 text-muted-foreground;

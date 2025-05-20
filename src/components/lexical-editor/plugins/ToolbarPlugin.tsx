@@ -24,8 +24,9 @@ import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
 import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, /* CODE_LANGUAGE_MAP, */ $createCodeNode, getCodeLanguages, getDefaultCodeLanguage } from '@lexical/code'; // CODE_LANGUAGE_MAP removed as it's not directly used
 import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
-import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingTagType, /* QuoteNode */ } from '@lexical/rich-text'; // QuoteNode removed as $createQuoteNode is used.
-import * as LexicalSelectionUtil from '@lexical/selection';
+import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as isQuoteNodeLexical, HeadingTagType /* QuoteNode removed */ } from '@lexical/rich-text';
+import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace import
+
 
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
@@ -33,7 +34,7 @@ import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Type, ChevronDown
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -64,7 +65,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-// import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; // AI Gen removed
+import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
 import { createCommand, type LexicalCommand } from 'lexical';
 
 
@@ -130,17 +131,18 @@ const FONT_SIZE_OPTIONS: [string, string][] = [
   ['96px', '72pt (96px)'],
 ];
 
+
 // Helper to extract numeric part for font size display
 const getNumericFontSize = (fontSize: string) => {
   const match = fontSize.match(/^(\d+)/);
-  return match ? match[1] : fontSize;
+  return match ? match[1] : fontSize.replace('px', '');
 };
 
 
 const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Default', value: 'inherit' },
   { name: 'Black', value: 'hsl(var(--foreground))', isThemeVar: true },
-  { name: 'White', value: 'hsl(var(--background))', isThemeVar: true }, // Note: White text on white bg might be invisible
+  { name: 'White', value: 'hsl(var(--background))', isThemeVar: true },
   { name: 'Primary', value: 'hsl(var(--primary))', isThemeVar: true },
   { name: 'Secondary', value: 'hsl(var(--secondary-foreground))', isThemeVar: true },
   { name: 'Accent', value: 'hsl(var(--accent))', isThemeVar: true },
@@ -198,7 +200,7 @@ export default function ToolbarPlugin() {
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [isCode, setIsCode] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(false); // For the default highlight format
+  const [isHighlight, setIsHighlight] = useState(false);
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
@@ -213,6 +215,10 @@ export default function ToolbarPlugin() {
   const [isInsertImageDialogOpen, setIsInsertImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageAltText, setImageAltText] = useState('');
+
+  const [isGeneratingText, setIsGeneratingText] = useState(false);
+  const [promptText, setPromptText] = useState('');
+  const [isGenAIDialogOpen, setIsGenAIDialogOpen] = useState(false);
 
 
   const { toast } = useToast();
@@ -254,7 +260,7 @@ export default function ToolbarPlugin() {
           setBlockType(type);
         } else {
           let type = $isHeadingNode(element) ? element.getTag() : element.getType();
-           if ($isQuoteNode(element)) {
+           if (isQuoteNodeLexical(element)) { // Use imported $isQuoteNode
             type = 'quote';
           } else if ($isCodeNode(element)) {
             type = 'code';
@@ -271,11 +277,10 @@ export default function ToolbarPlugin() {
         }
       }
 
-      // Ensure element.getFormatType exists before calling
       if (element && typeof (element as any).getFormatType === 'function') {
         setElementFormat((element as any).getFormatType());
       } else {
-        setElementFormat('left'); // Default if not available
+        setElementFormat('left');
       }
 
 
@@ -354,8 +359,6 @@ export default function ToolbarPlugin() {
   }, [editor, isLink]);
 
   const formatBlock = (type: string) => {
-    if (blockType === type && type !== 'paragraph' && type !== 'quote' && type !== 'code') return;
-
     editor.update(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
@@ -371,10 +374,7 @@ export default function ToolbarPlugin() {
       } else if (type === 'check') {
         editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
       } else if (type === 'quote') {
-         // Import $createQuoteNode from '@lexical/rich-text'
-         // LexicalSelectionUtil.$setBlocksType(selection, () => $createQuoteNode());
-         // For now, using paragraph as a fallback if $createQuoteNode is not imported or used directly
-        LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        LexicalSelectionUtil.$setBlocksType(selection, () => $createQuoteNode());
       } else if (type === 'code') {
         const langToSet = codeLanguage === 'plaintext' ? undefined : codeLanguage;
         LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
@@ -384,19 +384,29 @@ export default function ToolbarPlugin() {
 
   const onCodeLanguageSelect = useCallback(
     (value: string) => {
-      setCodeLanguage(value); 
       editor.update(() => {
+        setCodeLanguage(value);
+        const newLang = value === 'plaintext' ? undefined : value;
         if (selectedElementKey !== null) {
           const node = $getNodeByKey(selectedElementKey);
           if ($isCodeNode(node)) {
-            node.setLanguage(value === 'plaintext' ? undefined : value);
+            node.setLanguage(newLang);
           }
-        } else { // If no code block is selected, apply to new code blocks
-            formatBlock('code'); // This will use the new codeLanguage
+        } else if (blockType === 'code') {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+                const anchorNode = selection.anchor.getNode();
+                const codeBlockNode = $findMatchingParent(anchorNode, $isCodeNode) || ($isCodeNode(anchorNode) ? anchorNode : null);
+                if(codeBlockNode) {
+                    codeBlockNode.setLanguage(newLang);
+                } else {
+                     LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(newLang));
+                }
+            }
         }
       });
     },
-    [editor, selectedElementKey, codeLanguage], // Added codeLanguage
+    [editor, selectedElementKey, blockType, codeLanguage], // Added codeLanguage dependency
   );
 
 
@@ -457,28 +467,28 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // This can be problematic
-        console.warn("LexicalSelectionUtil.$clearFormatting is known to have issues. Performing manual clear.");
-
-        // Clear inline formats by dispatching commands
-        if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
-        if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
-        if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
-        if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
-        if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
-        if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
-        
-        // Reset custom styles applied via $patchStyleText
+        // LexicalSelectionUtil.$clearFormatting(selection); // Commented out due to persistent build error
+        console.warn("$clearFormatting is currently not fully functional due to a build issue. Some styles might persist.");
+        // Manual style reset as a fallback
         LexicalSelectionUtil.$patchStyleText(selection, {
-          'font-family': 'Arial, sans-serif', // Reset to default
-          'font-size': '16px', // Reset to default
-          'color': 'inherit', // Reset to default
-          'background-color': 'transparent', // Reset highlight
+          'font-family': 'Arial, sans-serif',
+          'font-size': '16px',
+          'color': 'inherit',
+          'background-color': 'transparent',
+          'font-weight': '',
+          'font-style': '',
+          'text-decoration': '',
         });
+        
+        const anchorNode = selection.anchor.getNode();
+        const element = $findMatchingParent(anchorNode, (e) => {
+            const parent = e.getParent();
+            return parent !== null && $isRootOrShadowRoot(parent);
+        }) || anchorNode.getTopLevelElementOrThrow();
 
-        // Additionally, ensure the selection itself reflects no formats
-        // This is a more direct way to clear the internal format state of the selection
-        selection.format = 0; 
+        if (!$isListNode(element) && !$isCodeNode(element) && !isQuoteNodeLexical(element)) {
+            LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        }
       }
     });
   };
@@ -516,13 +526,55 @@ export default function ToolbarPlugin() {
   };
 
   const handleInsertImage = () => {
-    const src = imageUrl.trim() || `https://placehold.co/400x300.png`; 
+    const src = imageUrl.trim() || `https://placehold.co/400x300.png`;
     const alt = imageAltText.trim() || 'Placeholder image';
     editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src, altText: alt, width: 400, height: 300});
     setIsInsertImageDialogOpen(false);
     setImageUrl('');
     setImageAltText('');
   };
+
+  const handleGenerateText = async () => {
+    if (!promptText.trim()) {
+      toast({ variant: "destructive", title: "Prompt is empty", description: "Please enter a prompt to generate text." });
+      return;
+    }
+    setIsGeneratingText(true);
+    editor.focus() // Ensure editor has focus before inserting text
+    try {
+      const result = await generateText({ prompt: promptText });
+      editor.update(() => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) {
+          selection.insertText(result.generatedText);
+        } else {
+          const root = $getRoot();
+          const paragraphNode = $createParagraphNode().append($createTextNode(result.generatedText));
+          root.append(paragraphNode);
+          paragraphNode.selectEnd();
+        }
+      });
+      toast({ title: "Text Generated!", description: "AI has generated text based on your prompt." });
+      // Do not close: setIsGenAIDialogOpen(false);
+      // setPromptText('');
+    } catch (error: any) {
+      console.error("AI text generation failed:", error);
+      let description = "An unexpected error occurred.";
+      if (error.message) {
+        if (error.message.includes("429")) {
+          description = "Rate limit exceeded. Please try again later.";
+        } else if (error.message.toLowerCase().includes("safety policy") || error.message.toLowerCase().includes("blocked")) {
+          description = "Content generation blocked due to safety policy. Please revise your prompt.";
+        } else {
+          description = error.message;
+        }
+      }
+      toast({ variant: "destructive", title: "AI Generation Failed", description });
+    } finally {
+      setIsGeneratingText(false);
+    }
+  };
+
 
   const currentAlignment = ALIGNMENT_OPTIONS.find(opt => opt.value === elementFormat) || ALIGNMENT_OPTIONS[0];
 
@@ -542,7 +594,7 @@ export default function ToolbarPlugin() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="px-2 h-9 min-w-[100px] text-sm justify-start" title="Block Type">
-             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> {blockTypeToBlockName[blockType] || 'Normal'}
+             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> {blockTypeToBlockName[blockType] || 'Normal'} <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -578,7 +630,6 @@ export default function ToolbarPlugin() {
         </DropdownMenuContent>
       </DropdownMenu>
       
-      {/* Code Language Selector (Contextual) */}
       {blockType === 'code' && (
         <>
          <Select value={codeLanguage || 'plaintext'} onValueChange={onCodeLanguageSelect}>
@@ -598,7 +649,6 @@ export default function ToolbarPlugin() {
         </>
       )}
 
-      {/* Font Family */}
       <Select value={currentFontFamily} onValueChange={onFontFamilySelect}>
         <SelectTrigger className="w-[120px] h-9 text-sm px-2" title="Font Family">
           <Type className="mr-1 h-4 w-4 shrink-0" />
@@ -613,7 +663,6 @@ export default function ToolbarPlugin() {
         </SelectContent>
       </Select>
 
-      {/* Font Size */}
       <Select value={currentFontSize} onValueChange={onFontSizeSelect}>
         <SelectTrigger className="w-[70px] h-9 text-sm px-2" title="Font Size">
           <SelectValue placeholder="Size" />
@@ -628,7 +677,6 @@ export default function ToolbarPlugin() {
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* Bold, Italic, Underline */}
       <Button variant={isBold ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} aria-label="Format Bold" title="Bold (Ctrl+B)">
         <Bold className="h-4 w-4" />
       </Button>
@@ -638,7 +686,6 @@ export default function ToolbarPlugin() {
       <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
         <Underline className="h-4 w-4" />
       </Button>
-      {/* Inline Code, Link */}
       <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
         <Code className="h-4 w-4" />
       </Button>
@@ -647,7 +694,6 @@ export default function ToolbarPlugin() {
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
       
-      {/* Text Color */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" title="Text Color">
@@ -664,7 +710,6 @@ export default function ToolbarPlugin() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Highlight Color */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" title="Highlight Color">
@@ -676,7 +721,7 @@ export default function ToolbarPlugin() {
              <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
               None
             </DropdownMenuItem>
-          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( // Filter out 'inherit' for background
+          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( 
             <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
               <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
               {color.name}
@@ -685,27 +730,25 @@ export default function ToolbarPlugin() {
         </DropdownMenuContent>
       </DropdownMenu>
       
-      {/* Text Case */}
        <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" title="Change Case">
-            <CaseSensitive className="h-4 w-4" /> {/* Icon looks like "Aa" */}
+            <CaseSensitive className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
-            <CaseLower className="mr-2 h-4 w-4" /> lowercase
+             lowercase
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
-            <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
+             UPPERCASE
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
-            <PilcrowSquare className="mr-2 h-4 w-4" /> Capitalize Case
+             Capitalize Case
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Strikethrough & Clear Format (kept for utility) */}
       <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
         <Strikethrough className="h-4 w-4" />
       </Button>
@@ -714,86 +757,120 @@ export default function ToolbarPlugin() {
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
       
-      {/* Insert Menu */}
-      <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
-        <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="px-2 h-9 text-sm justify-start" title="Insert">
-                <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
-                <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
+      {/* Insert Menu Dialog Structure */}
+      <Dialog open={isInsertTableDialogOpen || isInsertImageDialogOpen || isGenAIDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+              setIsInsertTableDialogOpen(false);
+              setIsInsertImageDialogOpen(false);
+              setIsGenAIDialogOpen(false);
+          }
+      }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="px-2 h-9 text-sm justify-start" title="Insert">
+              <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
+              <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
+            </DropdownMenuItem>
+            <DialogTrigger asChild>
+              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertTableDialogOpen(true); }}>
+                  <TableIcon className="mr-2 h-4 w-4" /> Table
               </DropdownMenuItem>
-              <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertTableDialogOpen(true); }}>
-                    <TableIcon className="mr-2 h-4 w-4" /> Table
-                </DropdownMenuItem>
-              </DialogTrigger>
-              <DialogTrigger asChild>
-                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertImageDialogOpen(true); }}>
-                    <ImageIcon className="mr-2 h-4 w-4" /> Image
-                </DropdownMenuItem>
-              </DialogTrigger>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </DialogTrigger>
+            <DialogTrigger asChild>
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertImageDialogOpen(true); }}>
+                  <ImageIcon className="mr-2 h-4 w-4" /> Image
+              </DropdownMenuItem>
+            </DialogTrigger>
+            <DialogTrigger asChild>
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGenAIDialogOpen(true); }}>
+                  <Sparkles className="mr-2 h-4 w-4" /> Generate Text with AI
+              </DropdownMenuItem>
+            </DialogTrigger>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-          {isInsertTableDialogOpen && (
-            <DialogContent className="sm:max-w-xs">
-              <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
-                  <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
-                  <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
-                </div>
+        {isInsertTableDialogOpen && (
+          <DialogContent className="sm:max-w-xs">
+            <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
+                <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
               </div>
-              <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleInsertTable}>Insert</Button>
-              </DialogFooter>
-            </DialogContent>
-          )}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
+                <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsInsertTableDialogOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={handleInsertTable}>Insert</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
 
-           {isInsertImageDialogOpen && (
+        {isInsertImageDialogOpen && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
+                <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
+                <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsInsertImageDialogOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={handleInsertImage}>Insert</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+         {isGenAIDialogOpen && (
             <DialogContent className="sm:max-w-md">
-              <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Generate Text with AI</DialogTitle>
+                <DialogDescription>
+                  Enter a prompt and let AI generate text for you.
+                </DialogDescription>
+              </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
-                  <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
-                  <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text" />
-                </div>
+                <Label htmlFor="ai-prompt">Prompt</Label>
+                <Input
+                  id="ai-prompt"
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder="e.g., Write a short story about a dragon..."
+                />
               </div>
               <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleInsertImage}>Insert</Button>
+                 <Button type="button" variant="outline" onClick={() => setIsGenAIDialogOpen(false)}>Cancel</Button>
+                <Button type="button" onClick={handleGenerateText} disabled={isGeneratingText}>
+                  {isGeneratingText && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Generate
+                </Button>
               </DialogFooter>
             </DialogContent>
           )}
-        </Dialog>
       </Dialog>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* Alignment Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Alignment">
-            <currentAlignment.icon className="mr-2 h-4 w-4 shrink-0" /> {currentAlignment.label}
+            <currentAlignment.icon className="mr-2 h-4 w-4 shrink-0" /> {currentAlignment.label} <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           {ALIGNMENT_OPTIONS.map(opt => (
-            <DropdownMenuItem 
-              key={opt.value} 
+            <DropdownMenuItem
+              key={opt.value}
               onClick={() => formatElement(opt.value)}
               className={elementFormat === opt.value ? 'bg-accent text-accent-foreground' : ''}
             >
@@ -807,3 +884,4 @@ export default function ToolbarPlugin() {
   );
 }
 
+    

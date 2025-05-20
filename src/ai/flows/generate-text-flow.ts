@@ -40,6 +40,26 @@ const generateTextPrompt = ai.definePrompt({
 Please provide a creative and relevant response to the following prompt.
 User Prompt: {{{prompt}}}
 Generated Text:`,
+  config: { // Adding safety settings to be less restrictive for common use cases
+    safetySettings: [
+      {
+        category: 'HARM_CATEGORY_HATE_SPEECH',
+        threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+      },
+      {
+        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+        threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+      },
+      {
+        category: 'HARM_CATEGORY_HARASSMENT',
+        threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+      },
+      {
+        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+        threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+      },
+    ],
+  }
 });
 
 const generateTextFlow = ai.defineFlow(
@@ -61,3 +81,4 @@ const generateTextFlow = ai.defineFlow(
     return output;
   }
 );
+
