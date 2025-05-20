@@ -220,6 +220,7 @@ body {
     @apply list-none m-0 pl-7 relative cursor-pointer; /* Ensure li itself is clickable */
   }
 
+  /* This ensures the paragraph within the list item doesn't disrupt the checkbox flow */
   .editor-listitem-unchecked > .editor-paragraph,
   .editor-listitem-checked > .editor-paragraph {
     @apply inline-block align-top; /* Helps with click target and alignment */
@@ -230,6 +231,8 @@ body {
   .editor-listitem-checked::before {
     content: '';
     @apply absolute left-0 top-[0.2em] w-4 h-4 border-2 border-primary rounded-sm ;
+    /* Ensure the pseudo-element doesn't inherit paragraph styles that might hide it */
+    display: block; 
   }
 
   .editor-listitem-checked::before {
@@ -238,6 +241,7 @@ body {
   .editor-listitem-checked::after { /* Checkmark */
     content: '';
     @apply absolute left-[3px] top-[0.25em] w-2.5 h-1.5 border-l-2 border-b-2 border-primary-foreground transform rotate-[-45deg];
+    display: block; /* Ensure visibility */
   }
   .editor-listitem-checked > .editor-paragraph { /* Style text when checked */
      @apply line-through text-muted-foreground;
