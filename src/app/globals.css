@@ -158,57 +158,59 @@ body {
     tab-size: 2;
     line-height: 1.5;
   }
-  /* CodeHighlightPlugin (PrismJS-like) token styles */
-  .editor-code-block .token.comment,
-  .editor-code-block .token.prolog,
-  .editor-code-block .token.doctype,
-  .editor-code-block .token.cdata {
+  /* CodeHighlightPlugin (PrismJS-like) token styles using theme class names */
+  .editor-code-block .token_comment,
+  .editor-code-block .token_prolog,
+  .editor-code-block .token_doctype,
+  .editor-code-block .token_cdata {
     @apply text-slate-500 dark:text-[#7f848e]; /* Comment color */
   }
-  .editor-code-block .token.punctuation {
+  .editor-code-block .token_punctuation {
     @apply text-slate-700 dark:text-[#abb2bf]; /* Punctuation/Default text color */
   }
-  .editor-code-block .token.property, /* Adjusted from green to red-ish for properties */
-  .editor-code-block .token.tag, /* Tag color */
-  .editor-code-block .token.variable, /* Variable color */
-  .editor-code-block .token.deleted {
+  .editor-code-block .token_property,
+  .editor-code-block .token_tag,
+  .editor-code-block .token_variable,
+  .editor-code-block .token_deleted {
     @apply text-red-600 dark:text-[#e06c75];
   }
-  .editor-code-block .token.boolean,
-  .editor-code-block .token.number,
-  .editor-code-block .token.constant,
-  .editor-code-block .token.symbol {
+  .editor-code-block .token_boolean,
+  .editor-code-block .token_number,
+  .editor-code-block .token_constant,
+  .editor-code-block .token_symbol {
      @apply text-amber-600 dark:text-[#d19a66]; /* Number/Boolean color */
   }
-  .editor-code-block .token.selector,
-  .editor-code-block .token.attr-name, /* Attr name color */
-  .editor-code-block .token.char,
-  .editor-code-block .token.builtin,
-  .editor-code-block .token.inserted {
+  .editor-code-block .token_selector,
+  .editor-code-block .token_attr, /* Covers attribute names, original was attr-name */
+  .editor-code-block .token_char,
+  .editor-code-block .token_builtin,
+  .editor-code-block .token_inserted {
     @apply text-purple-600 dark:text-[#c678dd]; /* Using keyword color for these */
   }
-  .editor-code-block .token.string { /* String color */
+  .editor-code-block .token_string,
+  .editor-code-block .token_attr-value { /* Covers attribute values */
     @apply text-green-600 dark:text-[#98c379];
   }
-  .editor-code-block .token.operator, /* Operator color */
-  .editor-code-block .token.entity,
-  .editor-code-block .token.url,
-  .editor-code-block .language-css .token.string,
-  .editor-code-block .style .token.string {
+  .editor-code-block .token_operator,
+  .editor-code-block .token_entity,
+  .editor-code-block .token_url {
+    /* .language-css .token.string and .style .token.string are very specific, handle if needed */
     @apply text-cyan-600 dark:text-[#56b6c2];
   }
-  .editor-code-block .token.atrule,
-  .editor-code-block .token.attr-value, /* Attr value (often string-like) */
-  .editor-code-block .token.keyword { /* Keyword color */
+  .editor-code-block .token_atrule,
+  .editor-code-block .token_keyword {
     @apply text-violet-600 dark:text-[#c678dd]; /* One Dark Pro Keyword Purple */
   }
-  .editor-code-block .token.function,
-  .editor-code-block .token.class-name { /* Function/Class name color */
+  .editor-code-block .token_function,
+  .editor-code-block .token_class-name { /* Covers class names */
     @apply text-sky-600 dark:text-[#61afef];
   }
-  .editor-code-block .token.regex,
-  .editor-code-block .token.important {
+  .editor-code-block .token_regex,
+  .editor-code-block .token_important {
     @apply text-orange-500 dark:text-[#d19a66]; /* Using number/boolean color */
+  }
+  .editor-code-block .token_class { /* Added for general class token */
+    @apply text-sky-600 dark:text-[#61afef];
   }
 
 
@@ -240,11 +242,6 @@ body {
   .editor-listitem-checked > .editor-paragraph { /* Style text when checked */
      @apply line-through text-muted-foreground;
   }
-  /* Removed potentially problematic rule:
-  .editor-listitem > div[dir="ltr"] > .editor-paragraph:first-child {
-    margin-left: 0;
-  }
-  */
 
 
   /* Image Node Styles */
