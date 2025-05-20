@@ -62,7 +62,7 @@ export default function LexicalEditorComponent(): JSX.Element {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [isFetchingSuggestion, setIsFetchingSuggestion] = useState(false);
   const [currentText, setCurrentText] = useState('');
-  const debouncedText = useDebounce(currentText, 3000); // Debounce AI call by 3 seconds to respect rate limits
+  const debouncedText = useDebounce(currentText, 5000); // Debounce AI call by 5 seconds to respect rate limits
 
   const initialConfig = {
     namespace: 'LexicalCanvasEditor',
