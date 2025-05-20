@@ -37,7 +37,7 @@ import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon
+  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -111,16 +111,16 @@ const blockTypeToBlockName: Record<string, string> = {
 };
 
 const FONT_FAMILY_OPTIONS: [string, string][] = [
-  ['Arial', `Arial, sans-serif`],
-  ['Courier New', `'Courier New', Courier, monospace`],
-  ['Georgia', `Georgia, serif`],
-  ['Times New Roman', `'Times New Roman', Times, serif`],
-  ['Trebuchet MS', `'Trebuchet MS', Helvetica, sans-serif`],
-  ['Verdana', `Verdana, Geneva, sans-serif`],
-  ['Roboto', `var(--font-roboto), sans-serif`],
-  ['Open Sans', `var(--font-open-sans), sans-serif`],
-  ['Lato', `var(--font-lato), sans-serif`],
-  ['Montserrat', `var(--font-montserrat), sans-serif`],
+  [`Arial`, `Arial, sans-serif`],
+  [`Courier New`, `'Courier New', Courier, monospace`],
+  [`Georgia`, `Georgia, serif`],
+  [`Times New Roman`, `'Times New Roman', Times, serif`],
+  [`Trebuchet MS`, `'Trebuchet MS', Helvetica, sans-serif`],
+  [`Verdana`, `Verdana, Geneva, sans-serif`],
+  [`Roboto`, `var(--font-roboto), sans-serif`],
+  [`Open Sans`, `var(--font-open-sans), sans-serif`],
+  [`Lato`, `var(--font-lato), sans-serif`],
+  [`Montserrat`, `var(--font-montserrat), sans-serif`],
 ];
 
 const FONT_SIZE_OPTIONS: [string, string][] = [
@@ -233,7 +233,9 @@ export default function ToolbarPlugin() {
   
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('');
+  const [editingLinkUrl, setEditingLinkUrl] = useState(''); // Store original URL for editing
   const [isEditingLink, setIsEditingLink] = useState(false);
+
 
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const [promptText, setPromptText] = useState('');
@@ -248,7 +250,6 @@ export default function ToolbarPlugin() {
     if ($isRangeSelection(selection)) {
       const anchorNode = selection.anchor.getNode();
       
-      // Determine the top-level block element for block type and alignment
       let element =
         anchorNode.getKey() === 'root'
           ? anchorNode
@@ -264,7 +265,6 @@ export default function ToolbarPlugin() {
       const elementKey = element.getKey();
       const elementDOM = editor.getElementByKey(elementKey);
 
-      // Update text format states
       setIsBold(selection.hasFormat('bold'));
       setIsItalic(selection.hasFormat('italic'));
       setIsUnderline(selection.hasFormat('underline'));
@@ -274,22 +274,22 @@ export default function ToolbarPlugin() {
       setIsCode(selection.hasFormat('code'));
       setIsHighlight(selection.hasFormat('highlight'));
 
-      // Update link state
       const node = getSelectedNode(selection);
-      const parent = node.getParent();
-      if ($isLinkNode(parent) || $isLinkNode(node)) {
+      const parentLink = $findMatchingParent(node, $isLinkNode);
+      if (parentLink || $isLinkNode(node)) {
         setIsLink(true);
+        setEditingLinkUrl($isLinkNode(parentLink) ? parentLink.getURL() : ($isLinkNode(node) ? node.getURL() : ''));
       } else {
         setIsLink(false);
+        setEditingLinkUrl('');
       }
       
-      // Update block type state
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
         const nearestList = $getNearestNodeOfType(anchorNode, ListNode);
-        if (nearestList) { // If inside a list, use list type
+        if (nearestList) {
             setBlockType(nearestList.getListType());
-        } else { // Otherwise, determine block type from element
+        } else { 
           const type = $isHeadingNode(element)
             ? element.getTag()
             : ($isCodeNode(element) ? 'code' : (isQuoteNodeLexical(element) ? 'quote' : element.getType()));
@@ -297,24 +297,21 @@ export default function ToolbarPlugin() {
           if (type in blockTypeToBlockName || supportedBlockTypes.has(type)) {
              setBlockType(type);
           } else {
-            setBlockType('paragraph'); // Default if unknown
+            setBlockType('paragraph');
           }
 
-          if ($isCodeNode(element)) { // If it's a code block, update language
+          if ($isCodeNode(element)) {
             const language = element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
             setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext');
           }
         }
       }
       
-      // Update font styles and colors
       setCurrentFontSize(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-size', '16px'));
       setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `var(--font-roboto), sans-serif`));
       setCurrentTextColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'color', 'inherit'));
       setCurrentHighlightColor(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'background-color', 'transparent'));
       
-      // Update element format (alignment)
-      // Check the element itself, then traverse upwards if needed
       let formatableNode: any = element;
       if (typeof formatableNode.getFormatType !== 'function') {
         formatableNode = $findMatchingParent(anchorNode, (n) => typeof (n as any).getFormatType === 'function');
@@ -322,7 +319,7 @@ export default function ToolbarPlugin() {
       if (formatableNode && typeof formatableNode.getFormatType === 'function') {
         setElementFormat(formatableNode.getFormatType());
       } else {
-        setElementFormat('left'); // Default alignment
+        setElementFormat('left');
       }
     }
   }, [editor]);
@@ -382,37 +379,29 @@ export default function ToolbarPlugin() {
     );
   }, [editor, updateToolbar]);
 
- const openLinkDialog = useCallback(() => {
-    editor.getEditorState().read(() => {
-        const selection = $getSelection();
-        let currentUrl = 'https://';
-        let currentlyLink = false;
-
-        if ($isRangeSelection(selection)) {
-            const node = getSelectedNode(selection);
-            const parent = node.getParent();
-            if ($isLinkNode(parent)) {
-                currentUrl = parent.getURL();
-                currentlyLink = true;
-            } else if ($isLinkNode(node)) {
-                currentUrl = node.getURL();
-                currentlyLink = true;
-            }
-        }
-        setLinkDialogUrl(currentUrl);
-        setIsEditingLink(currentlyLink);
-        setIsLinkDialogOpen(true);
-    });
-}, [editor]);
+const openLinkDialog = useCallback(() => {
+    if (isLink) { // If a link is selected, pre-fill with its URL
+        setLinkDialogUrl(editingLinkUrl || 'https://');
+        setIsEditingLink(true);
+    } else { // If no link selected, prepare for new link
+        setLinkDialogUrl('https://');
+        setIsEditingLink(false);
+    }
+    setIsLinkDialogOpen(true);
+}, [isLink, editingLinkUrl]);
 
 const handleLinkDialogSubmit = useCallback(() => {
-    if (linkDialogUrl === '' && isEditingLink) {
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
-    } else if (linkDialogUrl.trim() !== '') {
+    if (linkDialogUrl.trim() === '' || linkDialogUrl.trim() === 'https://') {
+        if (isEditingLink) { // If was editing and cleared URL, remove link
+          editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+        }
+    } else {
         const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(linkDialogUrl) ? linkDialogUrl : `https://${linkDialogUrl}`;
         editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
     }
     setIsLinkDialogOpen(false);
+    setLinkDialogUrl(''); // Reset for next use
+    setIsEditingLink(false);
 }, [editor, linkDialogUrl, isEditingLink]);
 
 
@@ -487,7 +476,7 @@ const handleLinkDialogSubmit = useCallback(() => {
     (value: string) => {
       editor.update(() => {
         const langToSet = value === 'plaintext' ? undefined : value;
-        setCodeLanguage(value); // Update internal state for dropdown
+        setCodeLanguage(value); 
         
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
@@ -495,13 +484,11 @@ const handleLinkDialogSubmit = useCallback(() => {
             const codeBlockNode = $getNearestNodeOfType(node, CodeNode); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet as string);
-            } else if (blockType === 'code') { 
-                 // If converting to code block, formatBlock will use the new codeLanguage state
             }
         }
       });
     },
-    [editor, blockType], 
+    [editor], 
   );
 
 
@@ -568,7 +555,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues in the environment
         console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
 
-        // Manual reset for common styles
         LexicalSelectionUtil.$patchStyleText(selection, {
           'font-family': `var(--font-roboto), sans-serif`, 
           'font-size': '16px',             
@@ -578,7 +564,6 @@ const handleLinkDialogSubmit = useCallback(() => {
           'font-style': '',                  
           'text-decoration': '',             
         });
-        // Toggle off active formats
         if (isBold) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
         if (isItalic) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
         if (isUnderline) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
@@ -588,7 +573,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         if (isCode) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
         if (isHighlight) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
         
-        // Attempt to reset block type to paragraph if it's a special block
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
             const parent = e.getParent();
@@ -702,14 +686,48 @@ const handleLinkDialogSubmit = useCallback(() => {
 
   return (
     <div ref={toolbarRef} className="p-2 rounded-t-md border border-b-0 border-input bg-card flex flex-wrap items-center gap-1 text-sm sm:text-base">
-      <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo (Ctrl+Z)">
+      <Button variant="ghost" size="icon" disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} aria-label="Undo" title="Undo">
         <Undo className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" disabled={!canRedo} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="Redo" title="Redo (Ctrl+Y)">
+      <Button variant="ghost" size="icon" disabled={!canRedo} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)} aria-label="Redo" title="Redo">
         <Redo className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
+      <Button variant="ghost" size="icon" title="Bold" aria-pressed={isBold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}> <Bold className="h-4 w-4" /> </Button>
+      <Button variant="ghost" size="icon" title="Italic" aria-pressed={isItalic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}> <Italic className="h-4 w-4" /> </Button>
+      <Button variant="ghost" size="icon" title="Underline" aria-pressed={isUnderline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}> <Underline className="h-4 w-4" /> </Button>
+      <Button variant="ghost" size="icon" title="Inline Code" aria-pressed={isCode} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}> <Code className="h-4 w-4" /> </Button>
+      
+      <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+        <DialogTrigger asChild>
+            <Button variant="ghost" size="icon" title={isLink ? "Edit Link" : "Insert Link"} aria-pressed={isLink} onClick={openLinkDialog}> <Link2 className="h-4 w-4" /> </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
+                <DialogDescription>
+                    {isEditingLink ? "Update the URL for the link." : "Enter the URL you want to link to."}
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <Label htmlFor="link-url" className="sr-only">URL</Label>
+                <Input 
+                    id="link-url" 
+                    value={linkDialogUrl} 
+                    onChange={(e) => setLinkDialogUrl(e.target.value)} 
+                    placeholder="https://example.com" 
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLinkDialogSubmit();}}}
+                />
+            </div>
+            <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setIsLinkDialogOpen(false); setLinkDialogUrl(''); setIsEditingLink(false);}}>Cancel</Button>
+                <Button type="button" onClick={handleLinkDialogSubmit}>Apply</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      
       <Select value={blockType} onValueChange={formatBlock}>
         <SelectTrigger className="w-[120px] sm:w-[140px] h-9 text-xs sm:text-sm px-2" title="Block Type">
              <Pilcrow className="mr-1 h-4 w-4 shrink-0" /> <span className="truncate w-[70px] sm:w-[90px]">{blockTypeToBlockName[blockType] || 'Normal'}</span>
@@ -774,43 +792,17 @@ const handleLinkDialogSubmit = useCallback(() => {
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
       
-      {/* Toolbar Layout based on Image */}
-      <Button variant="ghost" size="icon" title="Underline (Ctrl+U)" pressed={isUnderline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}> <Underline className="h-4 w-4" /> </Button>
-      <Button variant="ghost" size="icon" title="Inline Code" pressed={isCode} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}> <Code className="h-4 w-4" /> </Button>
-      
-      <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
-        <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" title={isLink ? "Edit Link" : "Insert Link"} pressed={isLink}> <Link2 className="h-4 w-4" /> </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-                <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-                <Label htmlFor="link-url">URL</Label>
-                <Input id="link-url" value={linkDialogUrl} onChange={(e) => setLinkDialogUrl(e.target.value)} placeholder="https://example.com" 
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLinkDialogSubmit();}}}
-                />
-            </div>
-            <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsLinkDialogOpen(false)}>Cancel</Button>
-                <Button type="button" onClick={handleLinkDialogSubmit}>Apply</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" title="Text Color">
-            {/* "A" icon with color underline */}
             <div className="relative">
-                <Type className="h-5 w-5"/>
+                <Palette className="h-5 w-5"/>
                 <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{backgroundColor: currentTextColor === 'inherit' || currentTextColor.startsWith('hsl(var(--foreground))') ? 'transparent' : currentTextColor}}/>
             </div>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-52 p-2">
-            <div className="grid grid-cols-8 gap-1"> {/* 8 columns for a wider grid */}
+            <div className="grid grid-cols-8 gap-1">
                 {COLOR_PALETTE.map(color => (
                     <Button
                         key={color.name + '-text'}
@@ -850,7 +842,7 @@ const handleLinkDialogSubmit = useCallback(() => {
                 >
                     <Eraser className="h-3 w-3 opacity-50"/>
                 </Button>
-                {COLOR_PALETTE.filter(c => c.value !== 'inherit' && c.value !== 'hsl(var(--foreground))' && c.value !== 'hsl(var(--primary))').map(color => ( // Filter out very dark/text colors for highlight
+                {COLOR_PALETTE.filter(c => c.value !== 'inherit' && c.value !== 'hsl(var(--foreground))' && c.value !== 'hsl(var(--primary))').map(color => (
                     <Button
                         key={color.name + '-bg'}
                         variant="outline"
@@ -868,7 +860,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DropdownMenuContent>
       </DropdownMenu>
       
-      {/* "Aa" More Formatting Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="px-2 h-9" title="More text formatting">
@@ -884,15 +875,14 @@ const handleLinkDialogSubmit = useCallback(() => {
                     <DropdownMenuSubContent>
                         <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
                             <CaseLower className="mr-2 h-4 w-4" /> lowercase
-                             <DropdownMenuShortcut>Ctrl+Shift+1</DropdownMenuShortcut>
+                             <DropdownMenuShortcut>Ctrl+Shift+L</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
                             <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
-                            <DropdownMenuShortcut>Ctrl+Shift+2</DropdownMenuShortcut>
+                            <DropdownMenuShortcut>Ctrl+Shift+U</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
                             <CaseSensitive className="mr-2 h-4 w-4" /> Capitalize Case
-                            <DropdownMenuShortcut>Ctrl+Shift+3</DropdownMenuShortcut>
                         </DropdownMenuItem>
                     </DropdownMenuSubContent>
                 </DropdownMenuPortal>
@@ -900,12 +890,14 @@ const handleLinkDialogSubmit = useCallback(() => {
             <DropdownMenuSeparator/>
             <DropdownMenuCheckboxItem checked={isBold} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}>
                 <Bold className="mr-2 h-4 w-4" /> Bold 
+                <DropdownMenuShortcut>Ctrl+B</DropdownMenuShortcut>
             </DropdownMenuCheckboxItem>
              <DropdownMenuCheckboxItem checked={isItalic} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}>
                 <Italic className="mr-2 h-4 w-4" /> Italic
+                <DropdownMenuShortcut>Ctrl+I</DropdownMenuShortcut>
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
-                <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+S</DropdownMenuShortcut>
+                <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
                 <Subscript className="mr-2 h-4 w-4" /> Subscript <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
@@ -1050,18 +1042,22 @@ const handleLinkDialogSubmit = useCallback(() => {
             >
               <opt.icon className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">{opt.label}</span>
+              {opt.value === 'left' && <DropdownMenuShortcut>Ctrl+Shift+L</DropdownMenuShortcut>}
+              {opt.value === 'center' && <DropdownMenuShortcut>Ctrl+Shift+E</DropdownMenuShortcut>}
+              {opt.value === 'right' && <DropdownMenuShortcut>Ctrl+Shift+R</DropdownMenuShortcut>}
+              {opt.value === 'justify' && <DropdownMenuShortcut>Ctrl+Shift+J</DropdownMenuShortcut>}
             </DropdownMenuItem>
           ))}
            <DropdownMenuItem
               onClick={() => formatElement('start')}
-              className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''} // 'start' maps to 'left' for LTR
+              // className={elementFormat === 'left' ? 'bg-accent text-accent-foreground' : ''} // 'start' maps to 'left' for LTR
             >
               <AlignLeft className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Start Align</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => formatElement('end')}
-              className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} // 'end' maps to 'right' for LTR
+              // className={elementFormat === 'right' ? 'bg-accent text-accent-foreground' : ''} // 'end' maps to 'right' for LTR
             >
               <AlignRight className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">End Align</span>
@@ -1070,10 +1066,12 @@ const handleLinkDialogSubmit = useCallback(() => {
            <DropdownMenuItem onClick={() => editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)}>
               <Outdent className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Outdent</span>
+              <DropdownMenuShortcut>Ctrl+[</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined)}>
               <Indent className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">Indent</span>
+              <DropdownMenuShortcut>Ctrl+]</DropdownMenuShortcut>
             </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
