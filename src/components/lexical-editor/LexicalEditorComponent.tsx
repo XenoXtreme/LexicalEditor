@@ -12,7 +12,7 @@ import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPl
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
 import 'katex/dist/katex.min.css';
-import { mergeRegister, $findMatchingParent } from '@lexical/utils';
+import { mergeRegister } from '@lexical/utils';
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -39,8 +39,8 @@ import {
   OUTDENT_CONTENT_COMMAND,
   $createParagraphNode,
   $isRootOrShadowRoot,
-  $isTextNode,
 } from 'lexical';
+import { $findMatchingParent } from '@lexical/utils';
 import { $isListNode, ListNode } from '@lexical/list';
 import { $isCodeNode, CodeNode } from '@lexical/code';
 import { $isHeadingNode, $isQuoteNode as isQuoteNodeLexical, HeadingNode } from '@lexical/rich-text';
@@ -86,20 +86,10 @@ const initialJsonState = {
   }
 };
 
+// Inner component to handle editor logic that depends on the context
+function EditorLogicHandler() {
+  const [editor] = useLexicalComposerContext();
 
-export default function LexicalEditorComponent(): JSX.Element {
-  const [editor] = useLexicalComposerContext(); 
-
-  const initialConfig = {
-    namespace: 'LexicalCanvasEditor',
-    theme: EditorTheme,
-    nodes: EditorNodes,
-    editorState: JSON.stringify(initialJsonState),
-    onError: (error: Error) => {
-      console.error("Lexical editor error:", error);
-    },
-  };
-  
   useEffect(() => {
     if (!editor) {
       return;
@@ -175,7 +165,7 @@ export default function LexicalEditorComponent(): JSX.Element {
         editor.update(() => {
           const selection = $getSelection();
           if ($isRangeSelection(selection)) {
-            // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues, attempting manual clear
+            // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues
             console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
 
             LexicalSelectionUtil.$patchStyleText(selection, {
@@ -187,7 +177,6 @@ export default function LexicalEditorComponent(): JSX.Element {
                 'font-style': '',                  
                 'text-decoration': '',             
             });
-             // Toggle off formats manually as a fallback
             if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
             if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
             if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
@@ -196,7 +185,6 @@ export default function LexicalEditorComponent(): JSX.Element {
             if (selection.hasFormat('superscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
             if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
             if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
-
 
             const anchorNode = selection.anchor.getNode();
             const element = $findMatchingParent(anchorNode, (e) => {
@@ -236,7 +224,21 @@ export default function LexicalEditorComponent(): JSX.Element {
     };
   }, [editor]);
 
+  return null; // This component does not render anything itself
+}
 
+
+export default function LexicalEditorComponent(): JSX.Element {
+  const initialConfig = {
+    namespace: 'LexicalCanvasEditor',
+    theme: EditorTheme,
+    nodes: EditorNodes,
+    editorState: JSON.stringify(initialJsonState),
+    onError: (error: Error) => {
+      console.error("Lexical editor error:", error);
+    },
+  };
+  
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className="relative bg-card p-0.5 rounded-lg shadow-lg border border-input">
@@ -258,10 +260,10 @@ export default function LexicalEditorComponent(): JSX.Element {
           <EquationPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
+          <EditorLogicHandler /> {/* Add the logic handler here */}
         </div>
       </div>
       <Toaster />
     </LexicalComposer>
   );
 }
-
