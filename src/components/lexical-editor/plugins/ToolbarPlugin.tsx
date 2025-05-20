@@ -19,6 +19,8 @@ import {
   ElementFormatType,
   $getRoot,
   $createTextNode,
+  INDENT_CONTENT_COMMAND,
+  OUTDENT_CONTENT_COMMAND,
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
@@ -34,7 +36,7 @@ import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -100,16 +102,16 @@ const blockTypeToBlockName: Record<string, string> = {
 };
 
 const FONT_FAMILY_OPTIONS: [string, string][] = [
-  ['Arial', 'Arial, sans-serif'],
-  ['Courier New', "'Courier New', Courier, monospace"],
-  ['Georgia', 'Georgia, serif'],
-  ['Times New Roman', "'Times New Roman', Times, serif"],
-  ['Trebuchet MS', "'Trebuchet MS', Helvetica, sans-serif"],
-  ['Verdana', 'Verdana, Geneva, sans-serif'],
-  ['Roboto', 'var(--font-roboto), sans-serif'],
-  ['Open Sans', 'var(--font-open-sans), sans-serif'],
-  ['Lato', 'var(--font-lato), sans-serif'],
-  ['Montserrat', 'var(--font-montserrat), sans-serif'],
+  ['Arial', `Arial, sans-serif`],
+  ['Courier New', `'Courier New', Courier, monospace`],
+  ['Georgia', `Georgia, serif`],
+  ['Times New Roman', `'Times New Roman', Times, serif`],
+  ['Trebuchet MS', `'Trebuchet MS', Helvetica, sans-serif`],
+  ['Verdana', `Verdana, Geneva, sans-serif`],
+  ['Roboto', `var(--font-roboto), sans-serif`],
+  ['Open Sans', `var(--font-open-sans), sans-serif`],
+  ['Lato', `var(--font-lato), sans-serif`],
+  ['Montserrat', `var(--font-montserrat), sans-serif`],
 ];
 
 const FONT_SIZE_OPTIONS: [string, string][] = [
@@ -158,11 +160,13 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType; label: string; icon: React.ElementType }[] = [
-  { value: 'left', label: 'Left Align', icon: AlignLeft },
-  { value: 'center', label: 'Center Align', icon: AlignCenter },
-  { value: 'right', label: 'Right Align', icon: AlignRight },
-  { value: 'justify', label: 'Justify Align', icon: AlignJustify },
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType, shortcut?: string }[] = [
+  { value: 'left', label: 'Left Align', icon: AlignLeft, shortcut: 'Ctrl+Shift+L' },
+  { value: 'center', label: 'Center Align', icon: AlignCenter, shortcut: 'Ctrl+Shift+E' },
+  { value: 'right', label: 'Right Align', icon: AlignRight, shortcut: 'Ctrl+Shift+R' },
+  { value: 'justify', label: 'Justify Align', icon: AlignJustify, shortcut: 'Ctrl+Shift+J' },
+  { value: 'start', label: 'Start Align', icon: AlignLeft }, // Icon remains AlignLeft for LTR
+  { value: 'end', label: 'End Align', icon: AlignRight },   // Icon remains AlignRight for LTR
 ];
 
 
@@ -190,7 +194,7 @@ export default function ToolbarPlugin() {
   const [canRedo, setCanRedo] = useState(false);
   const [blockType, setBlockType] = useState<string>('paragraph');
   const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
-  const [codeLanguage, setCodeLanguage] = useState('');
+  const [codeLanguage, setCodeLanguage] = useState('plaintext');
   const [currentCodeLanguages, setCurrentCodeLanguages] = useState<string[]>([]);
 
 
@@ -260,12 +264,12 @@ export default function ToolbarPlugin() {
           setBlockType(type);
         } else {
           let type = $isHeadingNode(element) ? element.getTag() : element.getType();
-           if (isQuoteNodeLexical(element)) { // Use imported $isQuoteNode
+           if (isQuoteNodeLexical(element)) { 
             type = 'quote';
           } else if ($isCodeNode(element)) {
             type = 'code';
-            const currentLanguage = element.getLanguage();
-            setCodeLanguage(currentLanguage || 'plaintext');
+            const currentLanguage = element.getLanguage() || 'plaintext'; 
+            setCodeLanguage(currentLanguage);
           }
 
 
@@ -276,11 +280,21 @@ export default function ToolbarPlugin() {
           }
         }
       }
-
+      
       if (element && typeof (element as any).getFormatType === 'function') {
         setElementFormat((element as any).getFormatType());
       } else {
-        setElementFormat('left');
+        if ($isRangeSelection(selection)) {
+            const anchorNode = selection.anchor.getNode();
+            const topLevelElement = anchorNode.getTopLevelElement();
+            if (topLevelElement && typeof (topLevelElement as any).getFormatType === 'function') {
+                 setElementFormat((topLevelElement as any).getFormatType());
+            } else {
+                 setElementFormat('left'); 
+            }
+        } else {
+            setElementFormat('left'); 
+        }
       }
 
 
@@ -347,16 +361,32 @@ export default function ToolbarPlugin() {
     );
   }, [editor, updateToolbar]);
 
-  const insertLink = useCallback(() => {
-    if (!isLink) {
-      const url = window.prompt('Enter link URL:');
-      if (url) {
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
-      }
-    } else {
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
-    }
-  }, [editor, isLink]);
+ const insertLink = useCallback(() => {
+    editor.update(() => {
+        const selection = $getSelection();
+        let existingUrl = '';
+        if ($isRangeSelection(selection)) {
+            const node = getSelectedNode(selection);
+            const parent = node.getParent();
+            if ($isLinkNode(parent)) {
+                existingUrl = parent.getURL();
+            } else if ($isLinkNode(node)) {
+                existingUrl = node.getURL();
+            }
+        }
+
+        const url = window.prompt(isLink ? 'Edit link URL:' : 'Enter link URL:', existingUrl || 'https://');
+        
+        if (url === null) { 
+            return;
+        }
+        if (url === '') { 
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+        } else {
+            editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
+        }
+    });
+}, [editor, isLink]);
 
   const formatBlock = (type: string) => {
     editor.update(() => {
@@ -385,34 +415,36 @@ export default function ToolbarPlugin() {
   const onCodeLanguageSelect = useCallback(
     (value: string) => {
       editor.update(() => {
-        setCodeLanguage(value);
-        const newLang = value === 'plaintext' ? undefined : value;
+        const langToSet = value === 'plaintext' ? undefined : value;
+        setCodeLanguage(value); 
         if (selectedElementKey !== null) {
           const node = $getNodeByKey(selectedElementKey);
           if ($isCodeNode(node)) {
-            node.setLanguage(newLang);
+            node.setLanguage(langToSet);
           }
-        } else if (blockType === 'code') {
+        } else if (blockType === 'code') { 
             const selection = $getSelection();
             if ($isRangeSelection(selection)) {
-                const anchorNode = selection.anchor.getNode();
-                const codeBlockNode = $findMatchingParent(anchorNode, $isCodeNode) || ($isCodeNode(anchorNode) ? anchorNode : null);
-                if(codeBlockNode) {
-                    codeBlockNode.setLanguage(newLang);
-                } else {
-                     LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(newLang));
-                }
+                 LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet));
             }
         }
       });
     },
-    [editor, selectedElementKey, blockType, codeLanguage], // Added codeLanguage dependency
+    [editor, selectedElementKey, blockType], 
   );
 
 
-  const formatElement = (format: ElementFormatType) => {
-    setElementFormat(format);
-    editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, format);
+  const formatElement = (format: ElementFormatType | 'start' | 'end') => {
+    let effectiveFormat: ElementFormatType = 'left'; 
+    if (format === 'start') {
+        effectiveFormat = 'left'; 
+    } else if (format === 'end') {
+        effectiveFormat = 'right'; 
+    } else {
+        effectiveFormat = format as ElementFormatType;
+    }
+    setElementFormat(effectiveFormat); 
+    editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, effectiveFormat);
   };
 
   const applyStyleText = useCallback(
@@ -467,17 +499,17 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // Commented out due to persistent build error
-        console.warn("$clearFormatting is currently not fully functional due to a build issue. Some styles might persist.");
-        // Manual style reset as a fallback
+        // LexicalSelectionUtil.$clearFormatting(selection); // Still seems problematic with build
+        console.warn("$clearFormatting is currently not fully functional due to a build issue. Some styles might persist. Attempting manual reset.");
+        
         LexicalSelectionUtil.$patchStyleText(selection, {
-          'font-family': 'Arial, sans-serif',
-          'font-size': '16px',
-          'color': 'inherit',
-          'background-color': 'transparent',
-          'font-weight': '',
-          'font-style': '',
-          'text-decoration': '',
+          'font-family': 'Arial, sans-serif', 
+          'font-size': '16px',             
+          'color': 'inherit',                
+          'background-color': 'transparent', 
+          'font-weight': '',                 
+          'font-style': '',                  
+          'text-decoration': '',             
         });
         
         const anchorNode = selection.anchor.getNode();
@@ -486,8 +518,9 @@ export default function ToolbarPlugin() {
             return parent !== null && $isRootOrShadowRoot(parent);
         }) || anchorNode.getTopLevelElementOrThrow();
 
-        if (!$isListNode(element) && !$isCodeNode(element) && !isQuoteNodeLexical(element)) {
-            LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+        if (!$isListNode(element) && !$isCodeNode(element) && !isQuoteNodeLexical(element) && !$isHeadingNode(element)) {
+        } else if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
+             LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
         }
       }
     });
@@ -540,7 +573,7 @@ export default function ToolbarPlugin() {
       return;
     }
     setIsGeneratingText(true);
-    editor.focus() // Ensure editor has focus before inserting text
+    editor.focus() 
     try {
       const result = await generateText({ prompt: promptText });
       editor.update(() => {
@@ -555,8 +588,8 @@ export default function ToolbarPlugin() {
         }
       });
       toast({ title: "Text Generated!", description: "AI has generated text based on your prompt." });
-      // Do not close: setIsGenAIDialogOpen(false);
-      // setPromptText('');
+      // setIsGenAIDialogOpen(false); // Keep dialog open
+      // setPromptText(''); // Optionally clear prompt
     } catch (error: any) {
       console.error("AI text generation failed:", error);
       let description = "An unexpected error occurred.";
@@ -576,7 +609,7 @@ export default function ToolbarPlugin() {
   };
 
 
-  const currentAlignment = ALIGNMENT_OPTIONS.find(opt => opt.value === elementFormat) || ALIGNMENT_OPTIONS[0];
+  const currentAlignmentOption = ALIGNMENT_OPTIONS.find(opt => opt.value === elementFormat) || ALIGNMENT_OPTIONS[0];
 
 
   return (
@@ -593,8 +626,8 @@ export default function ToolbarPlugin() {
       {/* Block Type */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="px-2 h-9 min-w-[100px] text-sm justify-start" title="Block Type">
-             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> {blockTypeToBlockName[blockType] || 'Normal'} <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+          <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Block Type">
+             <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[70px]">{blockTypeToBlockName[blockType] || 'Normal'}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -632,7 +665,7 @@ export default function ToolbarPlugin() {
       
       {blockType === 'code' && (
         <>
-         <Select value={codeLanguage || 'plaintext'} onValueChange={onCodeLanguageSelect}>
+         <Select value={codeLanguage} onValueChange={onCodeLanguageSelect}>
           <SelectTrigger className="w-[140px] h-9 ml-1 text-xs" title="Select Code Language">
             <SelectValue placeholder="Language" />
           </SelectTrigger>
@@ -655,22 +688,22 @@ export default function ToolbarPlugin() {
           <SelectValue placeholder="Font" />
         </SelectTrigger>
         <SelectContent>
-          {FONT_FAMILY_OPTIONS.map(([label, value]) => (
-            <SelectItem key={value} value={value} style={{fontFamily: value}}>
-              {label}
+          {FONT_FAMILY_OPTIONS.map(([displayName, cssName]) => ( 
+            <SelectItem key={displayName} value={cssName} style={{fontFamily: cssName}}>
+              {displayName} 
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
 
       <Select value={currentFontSize} onValueChange={onFontSizeSelect}>
-        <SelectTrigger className="w-[70px] h-9 text-sm px-2" title="Font Size">
-          <SelectValue placeholder="Size" />
+        <SelectTrigger className="w-[80px] h-9 text-sm px-2" title="Font Size">
+           <span className="truncate">{getNumericFontSize(currentFontSize)}</span>
         </SelectTrigger>
         <SelectContent>
           {FONT_SIZE_OPTIONS.map(([value, label]) => (
             <SelectItem key={value} value={value}>
-              {getNumericFontSize(label)}
+              {label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -686,13 +719,15 @@ export default function ToolbarPlugin() {
       <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
         <Underline className="h-4 w-4" />
       </Button>
+       <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
+        <Strikethrough className="h-4 w-4" />
+      </Button>
       <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
         <Code className="h-4 w-4" />
       </Button>
       <Button variant={isLink ? 'secondary' : 'ghost'} size="icon" onClick={insertLink} aria-label="Insert Link" title="Insert/Edit Link">
         <Link2 className="h-4 w-4" />
       </Button>
-      <Separator orientation="vertical" className="h-6 mx-1" />
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -749,15 +784,11 @@ export default function ToolbarPlugin() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button variant={isStrikethrough ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} aria-label="Format Strikethrough" title="Strikethrough">
-        <Strikethrough className="h-4 w-4" />
-      </Button>
       <Button variant="ghost" size="icon" onClick={clearFormatting} aria-label="Clear Formatting" title="Clear Formatting">
         <Eraser className="h-4 w-4" />
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
       
-      {/* Insert Menu Dialog Structure */}
       <Dialog open={isInsertTableDialogOpen || isInsertImageDialogOpen || isGenAIDialogOpen} onOpenChange={(open) => {
           if (!open) {
               setIsInsertTableDialogOpen(false);
@@ -772,6 +803,12 @@ export default function ToolbarPlugin() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
+             <DialogTrigger asChild>
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGenAIDialogOpen(true); }}>
+                  <Sparkles className="mr-2 h-4 w-4" /> Generate Text with AI
+              </DropdownMenuItem>
+            </DialogTrigger>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
               <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
             </DropdownMenuItem>
@@ -783,11 +820,6 @@ export default function ToolbarPlugin() {
             <DialogTrigger asChild>
                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertImageDialogOpen(true); }}>
                   <ImageIcon className="mr-2 h-4 w-4" /> Image
-              </DropdownMenuItem>
-            </DialogTrigger>
-            <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsGenAIDialogOpen(true); }}>
-                  <Sparkles className="mr-2 h-4 w-4" /> Generate Text with AI
               </DropdownMenuItem>
             </DialogTrigger>
           </DropdownMenuContent>
@@ -864,24 +896,35 @@ export default function ToolbarPlugin() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="px-2 h-9 min-w-[120px] text-sm justify-start" title="Alignment">
-            <currentAlignment.icon className="mr-2 h-4 w-4 shrink-0" /> {currentAlignment.label} <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+            <currentAlignmentOption.icon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[70px]">{currentAlignmentOption.label}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
+        <DropdownMenuContent className="w-56">
           {ALIGNMENT_OPTIONS.map(opt => (
             <DropdownMenuItem
               key={opt.value}
               onClick={() => formatElement(opt.value)}
-              className={elementFormat === opt.value ? 'bg-accent text-accent-foreground' : ''}
+              className={elementFormat === opt.value || (opt.value === 'start' && elementFormat === 'left') || (opt.value === 'end' && elementFormat === 'right') ? 'bg-accent text-accent-foreground' : ''}
             >
-              <opt.icon className="mr-2 h-4 w-4" /> {opt.label}
+              <opt.icon className="mr-2 h-4 w-4" /> 
+              <span className="flex-grow">{opt.label}</span>
+              {opt.shortcut && <span className="text-xs text-muted-foreground ml-auto">{opt.shortcut}</span>}
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+           <DropdownMenuItem onClick={() => editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)}>
+              <Outdent className="mr-2 h-4 w-4" /> 
+              <span className="flex-grow">Outdent</span>
+              <span className="text-xs text-muted-foreground ml-auto">Ctrl+[</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined)}>
+              <Indent className="mr-2 h-4 w-4" /> 
+              <span className="flex-grow">Indent</span>
+              <span className="text-xs text-muted-foreground ml-auto">Ctrl+]</span>
+            </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
     </div>
   );
 }
-
-    
