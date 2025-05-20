@@ -1,3 +1,4 @@
+
 "use client";
 import React, { useState, useCallback, useEffect } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
@@ -61,7 +62,7 @@ export default function LexicalEditorComponent(): JSX.Element {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [isFetchingSuggestion, setIsFetchingSuggestion] = useState(false);
   const [currentText, setCurrentText] = useState('');
-  const debouncedText = useDebounce(currentText, 1000); // Debounce AI call by 1 second
+  const debouncedText = useDebounce(currentText, 3000); // Debounce AI call by 3 seconds to respect rate limits
 
   const initialConfig = {
     namespace: 'LexicalCanvasEditor',
@@ -149,3 +150,4 @@ export default function LexicalEditorComponent(): JSX.Element {
     </LexicalComposer>
   );
 }
+
