@@ -33,11 +33,11 @@ import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace i
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-// import { INSERT_EQUATION_COMMAND } from '@lexical/math'; // Removed
+import { INSERT_EQUATION_COMMAND } from './EquationPlugin'; // Added Equation command
 
 
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent /* Calculator icon removed */
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator // Calculator icon added
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -235,13 +235,14 @@ export default function ToolbarPlugin() {
       const anchorNode = selection.anchor.getNode();
       
       // Parent List Item / List
-      const listItemNode = $getNearestNodeOfType(anchorNode, $isListItemNode as any);
-      const parentList = listItemNode ? $getNearestNodeOfType(listItemNode, $isListNode as any) : null;
+      const listItemNode = $getNearestNodeOfType(anchorNode, $isListItemNode);
+      const parentList = listItemNode ? $getNearestNodeOfType(listItemNode, $isListNode) : null;
 
-      if (parentList) {
-        setBlockType(parentList.getListType() as string); // 'ul', 'ol', 'check'
+      if (parentList && $isListNode(parentList)) { // Ensure parentList is a ListNode
+        const listType = parentList.getListType();
+        setBlockType(listType); 
          setSelectedElementKey(parentList.getKey());
-         if (typeof (parentList as any).getFormatType === 'function') {
+         if (typeof (parentList as any).getFormatType === 'function') { // Check if list node supports format
             setElementFormat((parentList as any).getFormatType());
           } else {
             setElementFormat('left'); 
@@ -396,7 +397,6 @@ export default function ToolbarPlugin() {
       if (!$isRangeSelection(selection)) return;
       
       const currentBlockTypeIsList = ['ul', 'ol', 'check'].includes(blockType);
-      const targetBlockTypeIsList = ['ul', 'ol', 'check'].includes(type);
 
       if (blockType === type && currentBlockTypeIsList) {
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
@@ -432,7 +432,7 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
             const node = getSelectedNode(selection);
-            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode as any); 
+            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet);
             } else if (blockType === 'code') { 
@@ -510,6 +510,8 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
+        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues
+        // Manual style reset as a workaround:
         console.warn("$clearFormatting from @lexical/selection is currently commented out due to persistent build issues. Attempting manual style reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
@@ -521,8 +523,9 @@ export default function ToolbarPlugin() {
           'font-style': '',                  
           'text-decoration': '',             
         });
-        selection.removeText(); 
+        // selection.removeText(); // This might be too aggressive, removes the text itself.
         
+        // Attempt to reset block type to paragraph if it's a special block
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
             const parent = e.getParent();
@@ -543,7 +546,7 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if($isRangeSelection(selection)){
             const node = getSelectedNode(selection);
-            const codeNode = $getNearestNodeOfType(node, $isCodeNode as any); 
+            const codeNode = $getNearestNodeOfType(node, $isCodeNode); 
             if ($isCodeNode(codeNode)) {
                 navigator.clipboard.writeText(codeNode.getTextContent())
                 .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
@@ -867,15 +870,13 @@ export default function ToolbarPlugin() {
                   <ImageIcon className="mr-2 h-4 w-4" /> Image
               </DropdownMenuItem>
             </DialogTrigger>
-            {/* Equation option removed
             <DropdownMenuItem
               onClick={() => {
-                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { equation: '', inline: false });
+                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
               }}
             >
               <Calculator className="mr-2 h-4 w-4" /> Equation
             </DropdownMenuItem>
-            */}
           </DropdownMenuContent>
         </DropdownMenu>
 

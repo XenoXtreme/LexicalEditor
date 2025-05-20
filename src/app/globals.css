@@ -272,19 +272,18 @@ body {
     @apply my-4 border-t border-border;
   }
 
-  /* Collapsible Node Styles */
-  /* Styles for Collapsible removed as package installation failed */
-  /*
-  .Collapsible__container {
-    @apply my-2 border border-input rounded;
+  /* Equation Node Styles */
+  .editor-equation {
+    @apply cursor-pointer p-1 my-1 text-lg text-foreground; /* General styling for equation wrappers */
+    /* KaTeX font styling is handled by katex.min.css */
   }
-  .Collapsible__title {
-    @apply p-2 bg-muted cursor-pointer font-medium hover:bg-accent/20;
+  .editor-equation-inline {
+    @apply inline-block align-middle; /* For inline equations */
   }
-  .Collapsible__content {
-    @apply p-2 border-t border-input;
+  .editor-equation .katex-display { /* Block equations */
+    @apply my-2 mx-auto; /* Center block equations */
   }
-  */
+  .editor-equation .katex {
+    @apply text-base; /* Adjust base font size for KaTeX if needed */
+  }
 }
-
-    

@@ -1,6 +1,6 @@
 
 "use client";
-import React from 'react';
+import React, { useEffect } from 'react'; // Added useEffect
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -10,7 +10,7 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
-// import 'katex/dist/katex.min.css'; // Removed as EquationPlugin is removed
+import 'katex/dist/katex.min.css'; // Added KaTeX CSS
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -24,7 +24,7 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
 // import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin'; // Removed
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
-// import { EquationPlugin } from '@lexical/math'; // Removed
+import EquationPlugin from './plugins/EquationPlugin'; // Added EquationPlugin
 
 
 // Initial editor state - can be empty or pre-filled
@@ -97,7 +97,7 @@ export default function LexicalEditorComponent(): JSX.Element {
           <HorizontalRulePlugin />
           <TablePlugin />
           {/* <CollapsiblePlugin /> */} {/* Removed */}
-          {/* <EquationPlugin /> */} {/* Removed */}
+          <EquationPlugin /> {/* Added EquationPlugin */}
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
         </div>

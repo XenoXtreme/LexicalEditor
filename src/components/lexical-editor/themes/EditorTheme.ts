@@ -80,8 +80,8 @@ const theme: EditorThemeClasses = {
   // collapsibleContainer: 'Collapsible__container',
   // collapsibleTitle: 'Collapsible__title',
   // collapsibleContent: 'Collapsible__content',
+  equation: 'editor-equation', // General class for equation wrapper
+  equationInline: 'editor-equation-inline', // Specific class for inline equations
 };
 
 export default theme;
-
-    
