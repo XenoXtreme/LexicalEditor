@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -135,14 +135,14 @@ export default function LexicalEditorComponent(): JSX.Element {
           <CodeHighlightPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <LexicalOnChangePlugin onChange={handleOnChange} ignoreSelectionChange={true} />
-          <AiAutocompletePlugin 
-            suggestion={aiSuggestion} 
-            setSuggestion={setAiSuggestion} 
+          <AiAutocompletePlugin
+            suggestion={aiSuggestion}
+            setSuggestion={setAiSuggestion}
             isFetchingSuggestion={isFetchingSuggestion}
           />
         </div>
       </div>
-      <Toaster /> 
+      <Toaster />
       {isFetchingSuggestion && (
         <div className="text-sm text-muted-foreground mt-2 text-center">Loading AI suggestion...</div>
       )}
