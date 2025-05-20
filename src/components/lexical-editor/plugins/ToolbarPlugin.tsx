@@ -67,7 +67,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
-import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
+import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow'; // Adjusted path
 import { createCommand, type LexicalCommand } from 'lexical';
 
 
@@ -232,17 +232,10 @@ export default function ToolbarPlugin() {
     const selection = $getSelection();
     if ($isRangeSelection(selection)) {
       const anchorNode = selection.anchor.getNode();
-      let element =
-        anchorNode.getKey() === 'root'
-          ? anchorNode
-          : $findMatchingParent(anchorNode, (e) => {
-              const parent = e.getParent();
-              return parent !== null && $isRootOrShadowRoot(parent);
-            }) || anchorNode.getTopLevelElementOrThrow();
+      const topLevelElement = anchorNode.getTopLevelElementOrThrow(); // More reliable way to get the main block
+      const elementKey = topLevelElement.getKey();
+      setSelectedElementKey(elementKey);
 
-
-      const elementKey = element.getKey();
-      const elementDOM = editor.getElementByKey(elementKey);
 
       setIsBold(selection.hasFormat('bold'));
       setIsItalic(selection.hasFormat('italic'));
@@ -251,50 +244,33 @@ export default function ToolbarPlugin() {
       setIsCode(selection.hasFormat('code'));
       setIsHighlight(selection.hasFormat('highlight'));
 
-
       const node = getSelectedNode(selection);
       const parent = node.getParent();
       setIsLink($isLinkNode(parent) || $isLinkNode(node));
 
-      if (elementDOM !== null) {
-        setSelectedElementKey(elementKey);
-        if ($isListNode(element)) {
-          const parentList = $getNearestNodeOfType(anchorNode, ListNode);
-          const type = parentList ? parentList.getListType() : (element as ListNode).getListType();
-          setBlockType(type);
+      // Block type determination
+      const parentList = $getNearestNodeOfType(anchorNode, ListNode);
+      if (parentList) {
+        setBlockType(parentList.getListType());
+      } else {
+        if ($isHeadingNode(topLevelElement)) {
+          setBlockType(topLevelElement.getTag());
+        } else if (isQuoteNodeLexical(topLevelElement)) {
+          setBlockType('quote');
+        } else if ($isCodeNode(topLevelElement)) {
+          setBlockType('code');
+          const lang = topLevelElement.getLanguage();
+          setCodeLanguage(lang || getDefaultCodeLanguage() || 'plaintext');
         } else {
-          let type = $isHeadingNode(element) ? element.getTag() : element.getType();
-           if (isQuoteNodeLexical(element)) { 
-            type = 'quote';
-          } else if ($isCodeNode(element)) {
-            type = 'code';
-            const currentLanguage = element.getLanguage() || 'plaintext'; 
-            setCodeLanguage(currentLanguage);
-          }
-
-
-          if (type in blockTypeToBlockName || supportedBlockTypes.has(type)) {
-            setBlockType(type as keyof typeof blockTypeToBlockName);
-          } else {
-            setBlockType('paragraph');
-          }
+          setBlockType('paragraph');
         }
       }
       
-      if (element && typeof (element as any).getFormatType === 'function') {
-        setElementFormat((element as any).getFormatType());
+      // Element Format (Alignment)
+      if (typeof (topLevelElement as any).getFormatType === 'function') {
+         setElementFormat((topLevelElement as any).getFormatType());
       } else {
-        if ($isRangeSelection(selection)) {
-            const anchorNode = selection.anchor.getNode();
-            const topLevelElement = anchorNode.getTopLevelElement();
-            if (topLevelElement && typeof (topLevelElement as any).getFormatType === 'function') {
-                 setElementFormat((topLevelElement as any).getFormatType());
-            } else {
-                 setElementFormat('left'); 
-            }
-        } else {
-            setElementFormat('left'); 
-        }
+         setElementFormat('left'); 
       }
 
 
@@ -393,6 +369,13 @@ export default function ToolbarPlugin() {
       const selection = $getSelection();
       if (!$isRangeSelection(selection)) return;
 
+      if (blockType === type && (type === 'ul' || type === 'ol' || type === 'check')) {
+        // If current block type is the same list type, remove the list
+        editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
+        return;
+      }
+
+
       if (type === 'paragraph') {
         LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
       } else if (type === 'h1' || type === 'h2' || type === 'h3') {
@@ -417,20 +400,20 @@ export default function ToolbarPlugin() {
       editor.update(() => {
         const langToSet = value === 'plaintext' ? undefined : value;
         setCodeLanguage(value); 
-        if (selectedElementKey !== null) {
-          const node = $getNodeByKey(selectedElementKey);
-          if ($isCodeNode(node)) {
-            node.setLanguage(langToSet);
-          }
-        } else if (blockType === 'code') { 
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
+        
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) {
+            const node = getSelectedNode(selection);
+            const codeBlockNode = $getNearestNodeOfType(node, $isCodeNode as any); // Type assertion
+            if (codeBlockNode && $isCodeNode(codeBlockNode)) {
+                 codeBlockNode.setLanguage(langToSet);
+            } else if (blockType === 'code') { 
                  LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet));
             }
         }
       });
     },
-    [editor, selectedElementKey, blockType], 
+    [editor, blockType], 
   );
 
 
@@ -500,10 +483,10 @@ export default function ToolbarPlugin() {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
         // LexicalSelectionUtil.$clearFormatting(selection); // Build issue, commented out
-        console.warn("$clearFormatting is currently not fully functional due to a build issue. Attempting manual reset.");
+        console.warn("$clearFormatting from @lexical/selection is currently commented out due to persistent build issues. Attempting manual style reset.");
         
         LexicalSelectionUtil.$patchStyleText(selection, {
-          'font-family': `Arial, sans-serif`, 
+          'font-family': `var(--font-roboto), sans-serif`, 
           'font-size': '16px',             
           'color': 'inherit',                
           'background-color': 'transparent', 
@@ -511,6 +494,7 @@ export default function ToolbarPlugin() {
           'font-style': '',                  
           'text-decoration': '',             
         });
+        selection.removeText(); // Clears bold, italic, etc. more reliably
         
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
@@ -528,13 +512,27 @@ export default function ToolbarPlugin() {
 
 
   const copyCodeContent = useCallback(() => {
-    if (blockType === 'code' && selectedElementKey) {
+    if (blockType === 'code') {
       editor.getEditorState().read(() => {
-        const codeNode = $getNodeByKey(selectedElementKey);
-        if ($isCodeNode(codeNode)) {
-          navigator.clipboard.writeText(codeNode.getTextContent())
-            .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
-            .catch(err => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy code to clipboard." }));
+        const selection = $getSelection();
+        if($isRangeSelection(selection)){
+            const node = getSelectedNode(selection);
+            const codeNode = $getNearestNodeOfType(node, $isCodeNode as any); // Type assertion
+            if ($isCodeNode(codeNode)) {
+                navigator.clipboard.writeText(codeNode.getTextContent())
+                .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
+                .catch(err => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy code to clipboard." }));
+                return;
+            }
+        }
+        // Fallback if selectedElementKey was used previously (might be less reliable with new logic)
+        if(selectedElementKey){
+             const node = $getNodeByKey(selectedElementKey);
+             if($isCodeNode(node)){
+                navigator.clipboard.writeText(node.getTextContent())
+                .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
+                .catch(err => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy code to clipboard." }));
+             }
         }
       });
     }
@@ -573,7 +571,7 @@ export default function ToolbarPlugin() {
       return;
     }
     setIsGeneratingText(true);
-    editor.focus() 
+    editor.focus();
     try {
       const result = await generateText({ prompt: promptText });
       editor.update(() => {
@@ -596,7 +594,7 @@ export default function ToolbarPlugin() {
       if (error.message) {
         if (error.message.includes("429")) {
           description = "Rate limit exceeded. Please try again later.";
-        } else if (error.message.toLowerCase().includes("safety policy") || error.message.toLowerCase().includes("blocked")) {
+        } else if (error.message.toLowerCase().includes("safety policy") || error.message.toLowerCase().includes("blocked") || error.message.toLowerCase().includes("finish reason: safety")) {
           description = "Content generation blocked due to safety policy. Please revise your prompt.";
         } else {
           description = error.message;
