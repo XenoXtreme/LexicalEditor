@@ -22,8 +22,9 @@ import AiAutocompletePlugin from './plugins/AiAutocompletePlugin';
 import { aiAutocomplete, type AutocompleteInput } from '@/ai/flows/ai-autocomplete';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import type { EditorState, LexicalEditor } from 'lexical';
-import { $getRoot, $getSelection, $isRangeSelection } from 'lexical';
-import { Toaster } from "@/components/ui/toaster" // For AI suggestions
+import { $getRoot } from 'lexical';
+import { Toaster } from "@/components/ui/toaster"; // For AI suggestions
+import { useToast } from '@/hooks/use-toast';
 
 // Initial editor state - can be empty or pre-filled
 const initialJsonState = {
@@ -62,7 +63,8 @@ export default function LexicalEditorComponent(): JSX.Element {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [isFetchingSuggestion, setIsFetchingSuggestion] = useState(false);
   const [currentText, setCurrentText] = useState('');
-  const debouncedText = useDebounce(currentText, 10000); // Debounce AI call by 10 seconds to respect rate limits
+  const debouncedText = useDebounce(currentText, 10000); // Debounce AI call
+  const { toast } = useToast();
 
   const initialConfig = {
     namespace: 'LexicalCanvasEditor',
@@ -107,6 +109,13 @@ export default function LexicalEditorComponent(): JSX.Element {
           }
         } catch (error) {
           console.error("AI Autocomplete error:", error);
+          if (error instanceof Error && error.message.includes("429 Too Many Requests")) {
+            toast({
+              variant: "destructive",
+              title: "AI Rate Limit Exceeded",
+              description: "You've made too many requests for AI suggestions. Please try again in a moment.",
+            });
+          }
           setAiSuggestion(null);
         } finally {
           setIsFetchingSuggestion(false);
@@ -116,7 +125,7 @@ export default function LexicalEditorComponent(): JSX.Element {
     } else if (!debouncedText.trim()) {
         setAiSuggestion(null); // Clear suggestion if text is empty
     }
-  }, [debouncedText, isFetchingSuggestion]);
+  }, [debouncedText, isFetchingSuggestion, toast]);
 
 
   return (
