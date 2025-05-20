@@ -1,6 +1,6 @@
 
 "use client";
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -10,7 +10,6 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin'; // Local wrapper for syntax highlighting
-import { OnChangePlugin as LexicalOnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -18,13 +17,8 @@ import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
-import AiAutocompletePlugin from './plugins/AiAutocompletePlugin';
-import { aiAutocomplete, type AutocompleteInput } from '@/ai/flows/ai-autocomplete';
-import { useDebounce } from '@/lib/hooks/useDebounce';
-import type { EditorState, LexicalEditor } from 'lexical';
-import { $getRoot } from 'lexical';
 import { Toaster } from "@/components/ui/toaster"; // For AI suggestions
-import { useToast } from '@/hooks/use-toast';
+
 
 // Initial editor state - can be empty or pre-filled
 const initialJsonState = {
@@ -59,12 +53,6 @@ const initialJsonState = {
 
 
 export default function LexicalEditorComponent(): JSX.Element {
-  const [editorInstance, setEditorInstance] = useState<LexicalEditor | null>(null);
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
-  const [isFetchingSuggestion, setIsFetchingSuggestion] = useState(false);
-  const [currentText, setCurrentText] = useState('');
-  const debouncedText = useDebounce(currentText, 10000); // Debounce AI call
-  const { toast } = useToast();
 
   const initialConfig = {
     namespace: 'LexicalCanvasEditor',
@@ -75,58 +63,6 @@ export default function LexicalEditorComponent(): JSX.Element {
       console.error("Lexical editor error:", error);
     },
   };
-
-  const handleOnChange = useCallback((editorState: EditorState, editor: LexicalEditor) => {
-    setEditorInstance(editor); // Keep track of editor instance
-    editorState.read(() => {
-      const root = $getRoot();
-      const text = root.getTextContent();
-      setCurrentText(text);
-
-      // Clear suggestion if text content becomes empty or significantly changes from suggestion context
-      if (aiSuggestion && (text.length === 0 || !text.includes(currentText.substring(0, currentText.length - aiSuggestion.length)))) {
-         setAiSuggestion(null);
-      }
-    });
-  }, [aiSuggestion, currentText]);
-
-  useEffect(() => {
-    if (debouncedText && debouncedText.trim().length > 10 && !isFetchingSuggestion) { // Min length for suggestion
-      const fetchSuggestion = async () => {
-        setIsFetchingSuggestion(true);
-        try {
-          const input: AutocompleteInput = { text: debouncedText };
-          const result = await aiAutocomplete(input);
-          if (result.completion && result.completion.trim() !== "") {
-            // Only set suggestion if it's different from current ending or not already applied
-            if (!debouncedText.endsWith(result.completion)) {
-                 setAiSuggestion(result.completion);
-            } else {
-                setAiSuggestion(null); // Avoid suggesting what's already there
-            }
-          } else {
-            setAiSuggestion(null);
-          }
-        } catch (error) {
-          console.error("AI Autocomplete error:", error);
-          if (error instanceof Error && error.message.includes("429 Too Many Requests")) {
-            toast({
-              variant: "destructive",
-              title: "AI Rate Limit Exceeded",
-              description: "You've made too many requests for AI suggestions. Please try again in a moment.",
-            });
-          }
-          setAiSuggestion(null);
-        } finally {
-          setIsFetchingSuggestion(false);
-        }
-      };
-      fetchSuggestion();
-    } else if (!debouncedText.trim()) {
-        setAiSuggestion(null); // Clear suggestion if text is empty
-    }
-  }, [debouncedText, isFetchingSuggestion, toast]);
-
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
@@ -144,19 +80,9 @@ export default function LexicalEditorComponent(): JSX.Element {
           <LinkPlugin />
           <CodeHighlightPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
-          <LexicalOnChangePlugin onChange={handleOnChange} ignoreSelectionChange={true} />
-          <AiAutocompletePlugin
-            suggestion={aiSuggestion}
-            setSuggestion={setAiSuggestion}
-            isFetchingSuggestion={isFetchingSuggestion}
-          />
         </div>
       </div>
       <Toaster />
-      {isFetchingSuggestion && (
-        <div className="text-sm text-muted-foreground mt-2 text-center">Loading AI suggestion...</div>
-      )}
     </LexicalComposer>
   );
 }
-

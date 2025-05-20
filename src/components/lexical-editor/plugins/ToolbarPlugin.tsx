@@ -19,6 +19,8 @@ import {
   COMMAND_PRIORITY_NORMAL,
   LexicalEditor,
   ElementFormatType,
+  $getRoot,
+  $createTextNode,
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
@@ -229,7 +231,7 @@ export default function ToolbarPlugin() {
   }, [editor, isLink]);
 
   const formatBlock = (type: keyof typeof blockTypeToBlockName) => {
-    if (blockType === type && type !== 'paragraph') return; // Avoid reformatting to the same type unless it's to clear
+    if (blockType === type && type !== 'paragraph') return; 
   
     editor.update(() => {
       const selection = $getSelection();
@@ -251,11 +253,7 @@ export default function ToolbarPlugin() {
           editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
           break;
         case 'quote':
-           // For quote, Lexical's $setBlocksType might need custom handling if it doesn't directly support 'quote' type with $createQuoteNode.
-           // A common approach is to wrap selected paragraphs in a quote or transform them.
-           // This example uses a simplified approach which might replace content.
-           // For a robust solution, check Lexical examples for quote block transformations.
-          $setBlocksType(selection, () => $createParagraphNode().setFormat('quote')); // This sets format, for true QuoteNode, use $createQuoteNode
+          $setBlocksType(selection, () => $createParagraphNode().setFormat('quote')); 
           break;
         case 'code':
           $setBlocksType(selection, () => $createCodeNode(codeLanguage || undefined));
@@ -290,30 +288,45 @@ export default function ToolbarPlugin() {
     if (!generationPrompt.trim() || isGeneratingText) return;
 
     setIsGeneratingText(true);
+    let generatedTextContent: string | null = null; 
+
     try {
       const input: GenerateTextInput = { prompt: generationPrompt };
       const result = await generateText(input);
 
       if (result && result.generatedText) {
-        editor.update(() => {
-          const selection = $getSelection();
-          if ($isRangeSelection(selection)) {
-            selection.insertText(result.generatedText);
+        generatedTextContent = result.generatedText; 
+        
+        editor.focus(
+          () => { 
+            if (generatedTextContent !== null) { 
+              editor.update(() => {
+                const selection = $getSelection();
+                if ($isRangeSelection(selection)) {
+                  selection.insertText(generatedTextContent!);
+                } else {
+                  const root = $getRoot();
+                  const paragraph = $createParagraphNode();
+                  paragraph.append($createTextNode(generatedTextContent!));
+                  root.append(paragraph);
+                  paragraph.selectEnd(); 
+                }
+              });
+            }
           }
-        });
+        );
+
         toast({
           title: "Text Generated",
           description: "AI-generated text has been inserted into the editor.",
         });
       } else if (result && result.generatedText === "") {
-        // AI returned empty string, could be a valid response or a filtered one
-         toast({
+        toast({
           variant: "default",
           title: "AI Response",
           description: "The AI returned an empty response. This might be due to content filters or the nature of the prompt.",
         });
-      }
-      else {
+      } else {
         throw new Error("AI returned an unexpected or empty response.");
       }
     } catch (error) {
@@ -324,6 +337,9 @@ export default function ToolbarPlugin() {
         if (error.message.includes("429 Too Many Requests")) {
           title = "AI Rate Limit Exceeded";
           description = "You've made too many requests for AI text generation. Please try again later.";
+        } else if (error.message.includes("Candidate was blocked due to SAFETY")) {
+            title = "Content Generation Blocked";
+            description = "The AI could not generate text for this prompt due to safety filters. Please try a different prompt.";
         } else {
           description = error.message;
         }
@@ -335,8 +351,9 @@ export default function ToolbarPlugin() {
       });
     } finally {
       setIsGeneratingText(false);
-      setIsGenerateTextDialogOpen(false);
-      setGenerationPrompt(''); 
+      // User can manually close dialog or clear prompt
+      // setIsGenerateTextDialogOpen(false); 
+      // setGenerationPrompt(''); 
     }
   };
 
@@ -423,8 +440,8 @@ export default function ToolbarPlugin() {
 
       <Dialog open={isGenerateTextDialogOpen} onOpenChange={(open) => {
         if (!open) { 
-          setGenerationPrompt('');
-          setIsGeneratingText(false); 
+          // setGenerationPrompt(''); // Keep prompt on manual close
+          // setIsGeneratingText(false); // Should be handled by generation logic
         }
         setIsGenerateTextDialogOpen(open);
       }}>
