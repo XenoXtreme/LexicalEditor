@@ -215,12 +215,12 @@ body {
   /* Checklist styles */
   .editor-listitem-unchecked,
   .editor-listitem-checked {
-    @apply list-none m-0 pl-7 relative; /* Increased padding for checkbox */
+    @apply list-none m-0 pl-7 relative cursor-pointer; /* Ensure li itself is clickable */
   }
 
   .editor-listitem-unchecked > .editor-paragraph,
   .editor-listitem-checked > .editor-paragraph {
-    @apply inline-block; /* Helps with click target */
+    @apply inline-block align-top; /* Helps with click target and alignment */
   }
 
 
@@ -240,10 +240,11 @@ body {
   .editor-listitem-checked > .editor-paragraph { /* Style text when checked */
      @apply line-through text-muted-foreground;
   }
-  /* Target paragraph inside checklist item more specifically to avoid interfering with nested lists' text*/
+  /* Removed potentially problematic rule:
   .editor-listitem > div[dir="ltr"] > .editor-paragraph:first-child {
     margin-left: 0;
   }
+  */
 
 
   /* Image Node Styles */
