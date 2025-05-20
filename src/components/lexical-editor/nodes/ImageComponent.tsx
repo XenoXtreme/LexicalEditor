@@ -16,15 +16,12 @@ import {
   KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
-  SELECTION_CHANGE_COMMAND,
 } from 'lexical';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { $isImageNode, ImageNode } from './ImageNode.tsx';
-import NextImage from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Image as ImageIcon, Trash2, Edit3, Check, X } from 'lucide-react';
 
@@ -72,7 +69,7 @@ function ImageResizer({
     startY: 0,
   });
 
-  const editorIsActuallyReadOnly = editor && typeof editor.isReadOnly === 'function' ? editor.isReadOnly() : true; // Default to true (read-only) for safety
+  const editorIsActuallyReadOnly = editor && typeof editor.getEditorState()._readOnly === 'function' ? editor.getEditorState()._readOnly : true; // Default to true (read-only) for safety
   const draggableResizerHandles = !editorIsActuallyReadOnly;
 
   const [isEditingAlt, setIsEditingAlt] = useState(false);
@@ -164,7 +161,7 @@ function ImageResizer({
       const width = positioning.currentWidth;
       const height = positioning.currentHeight;
       positioning.isResizing = false;
-      onResizeEnd(width, height); 
+      onResizeEnd(width as number, height as number); 
 
       document.body.style.setProperty(
         '-webkit-user-select',
@@ -268,7 +265,7 @@ export default function ImageComponent({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [editor] = useLexicalComposerContext();
-  const [selection, setSelection] = useState(null); 
+  const [selection, setSelection] = useState<any>(null); 
   const [isResizing, setIsResizing] = useState(false);
 
 
@@ -397,12 +394,12 @@ export default function ImageComponent({
   const W = typeof width === 'number' ? width : 400; 
   const H = typeof height === 'number' ? height : 300; 
 
-  const isDraggable = editor && typeof editor.isReadOnly === 'function' ? !editor.isReadOnly() : false;
+  const isDraggable = editor && typeof editor.getEditorState()._readOnly === 'function' ? !editor.getEditorState()._readOnly : false;
 
   return (
     <Suspense fallback={null}>
       <div className={cn('relative inline-block', isSelected && 'outline outline-2 outline-primary outline-offset-2 rounded-sm')} draggable={isDraggable}>
-        <NextImage
+        <img
           ref={imageRef}
           src={src}
           alt={altText}

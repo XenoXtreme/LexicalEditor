@@ -19,6 +19,7 @@ import { LexicalErrorBoundary } from './EditorErrorBoundary';
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
 import { Toaster } from "@/components/ui/toaster";
+import { Separator } from '@/components/ui/separator';
 
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
@@ -83,6 +84,7 @@ export default function LexicalEditorComponent(): JSX.Element {
     <LexicalComposer initialConfig={initialConfig}>
       <div className="relative bg-card p-0.5 rounded-lg shadow-lg border border-input">
         <ToolbarPlugin />
+        <Separator orientation="horizontal"/>
         <div className="editor-inner relative mt-0 p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded-b-md">
           <RichTextPlugin
             contentEditable={<ContentEditable className="outline-none resize-none h-full text-base" />}
@@ -97,7 +99,7 @@ export default function LexicalEditorComponent(): JSX.Element {
           <HorizontalRulePlugin />
           <TablePlugin />
           {/* <CollapsiblePlugin /> */} {/* Removed */}
-          <EquationPlugin /> {/* Added EquationPlugin */}
+          <EquationPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
         </div>
