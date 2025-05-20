@@ -33,11 +33,11 @@ import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace i
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin';
+import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon
+  Bold, Italic, Underline, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator,CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -47,6 +47,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import {
   Select,
@@ -161,7 +168,7 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType; shortcut?: string }[] = [
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType }[] = [
   { value: 'left', label: 'Left Align', icon: AlignLeft },
   { value: 'center', label: 'Center Align', icon: AlignCenter },
   { value: 'right', label: 'Right Align', icon: AlignRight },
@@ -258,7 +265,7 @@ export default function ToolbarPlugin() {
       setIsSubscript(selection.hasFormat('subscript'));
       setIsSuperscript(selection.hasFormat('superscript'));
       setIsCode(selection.hasFormat('code'));
-      setIsHighlight(selection.hasFormat('highlight')); // For default highlight format
+      setIsHighlight(selection.hasFormat('highlight'));
 
       // Update links
       const node = getSelectedNode(selection);
@@ -272,10 +279,9 @@ export default function ToolbarPlugin() {
       // Update block type
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
-         if ($isListNode(element)) {
-          const parentList = $getNearestNodeOfType<ListNode>(anchorNode, ListNode);
-          const type = parentList ? parentList.getListType() : (element as ListNode).getListType();
-          setBlockType(type);
+        const nearestList = $getNearestNodeOfType(anchorNode, ListNode);
+        if (nearestList) {
+            setBlockType(nearestList.getListType());
         } else {
           const type = $isHeadingNode(element)
             ? element.getTag()
@@ -404,7 +410,7 @@ export default function ToolbarPlugin() {
         if (url === '' && isCurrentlyLink) { 
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
         } else if (url !== '') {
-            const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
+            const prefixedUrl = /^(https?:\/\/|mailto:|tel:)/i.test(url) ? url : `https://`;
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
         }
     });
@@ -419,7 +425,7 @@ export default function ToolbarPlugin() {
 
       if ((blockType === type && currentBlockIsList) || (type === 'paragraph' && currentBlockIsList)) {
         editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-        if (type !== 'paragraph' && !currentBlockIsList) { // if it wasn't list before, re-apply intended
+        if (type !== 'paragraph' && !currentBlockIsList) { 
            setTimeout(() => {
             editor.update(() => {
                 const newSelection = $getSelection();
@@ -428,12 +434,12 @@ export default function ToolbarPlugin() {
                 }
             });
            }, 0);
-        } else if (type !== 'paragraph' && blockType !== type) { // if it was a different list type
+        } else if (type !== 'paragraph' && blockType !== type) { 
              setTimeout(() => {
                 editor.update(() => {
                     const newSelection = $getSelection();
                     if ($isRangeSelection(newSelection)) {
-                        applySpecificBlockFormat(type, newSelection); // apply new list type
+                        applySpecificBlockFormat(type, newSelection); 
                     }
                 });
             }, 0);
@@ -558,9 +564,12 @@ export default function ToolbarPlugin() {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        // LexicalSelectionUtil.$clearFormatting(selection); // This was causing issues, using manual reset
-        console.warn("$clearFormatting from @lexical/selection is commented out. Attempting manual style reset.");
-        
+        // console.warn("$clearFormatting from @lexical/selection is commented out. Attempting manual style reset.");
+        // LexicalSelectionUtil.$clearFormatting(selection); // Re-enable this if module resolution issue is fixed
+
+        console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
+
+        // Manual reset as a fallback or to cover aspects $clearFormatting might miss
         LexicalSelectionUtil.$patchStyleText(selection, {
           'font-family': `var(--font-roboto), sans-serif`, 
           'font-size': '16px',             
@@ -571,14 +580,14 @@ export default function ToolbarPlugin() {
           'text-decoration': '',             
         });
         // Clear bold, italic, underline, strikethrough, subscript, superscript, code, highlight formats
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold'); // Toggles off if on
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight'); // Toggles off default highlight
+        if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
+        if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+        if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
+        if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+        if (selection.hasFormat('subscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
+        if (selection.hasFormat('superscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
+        if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+        if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
         
         const anchorNode = selection.anchor.getNode();
         const element = $findMatchingParent(anchorNode, (e) => {
@@ -600,9 +609,9 @@ export default function ToolbarPlugin() {
         const selection = $getSelection();
         if($isRangeSelection(selection)){
             const node = getSelectedNode(selection);
-            const codeNode = $getNearestNodeOfType(node, CodeNode); 
-            if ($isCodeNode(codeNode)) {
-                navigator.clipboard.writeText(codeNode.getTextContent())
+            const codeBlockNode = $getNearestNodeOfType(node, CodeNode); 
+            if ($isCodeNode(codeBlockNode)) {
+                navigator.clipboard.writeText(codeBlockNode.getTextContent())
                 .then(() => toast({ title: "Code Copied!", description: "Content of the code block has been copied to clipboard." }))
                 .catch(err => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy code to clipboard." }));
                 return;
@@ -707,7 +716,7 @@ export default function ToolbarPlugin() {
              <Pilcrow className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[50px] sm:w-[70px]">{blockTypeToBlockName[blockType] || 'Normal'}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="overflow-y-scroll">
+        <DropdownMenuContent className="overflow-y-auto">
           <DropdownMenuItem onClick={() => formatBlock('paragraph')} className={blockType === 'paragraph' ? 'bg-accent text-accent-foreground' : ''}>
             <Pilcrow className="mr-2 h-4 w-4" /> Normal
           </DropdownMenuItem>
@@ -787,93 +796,104 @@ export default function ToolbarPlugin() {
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      <Button variant={isBold ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} aria-label="Format Bold" title="Bold (Ctrl+B)">
-        <Bold className="h-4 w-4" />
-      </Button>
-      <Button variant={isItalic ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} aria-label="Format Italic" title="Italic (Ctrl+I)">
-        <Italic className="h-4 w-4" />
-      </Button>
-      <Button variant={isUnderline ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-label="Format Underline" title="Underline (Ctrl+U)">
-        <Underline className="h-4 w-4" />
-      </Button>
-      <Button variant={isSubscript ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')} aria-label="Format Subscript" title="Subscript">
-        <Subscript className="h-4 w-4" />
-      </Button>
-      <Button variant={isSuperscript ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')} aria-label="Format Superscript" title="Superscript">
-        <Superscript className="h-4 w-4" />
-      </Button>
-      <Button variant={isCode ? 'secondary' : 'ghost'} size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-label="Format Code" title="Inline Code">
-        <Code className="h-4 w-4" />
-      </Button>
-      <Button variant={isLink ? 'secondary' : 'ghost'} size="icon" onClick={insertLink} aria-label="Insert Link" title="Insert/Edit Link">
-        <Link2 className="h-4 w-4" />
-      </Button>
-      
+      {/* Consolidated Text Formatting Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Text Color">
-            <Palette className="h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor.startsWith('hsl(var(--foreground))') ? 'currentColor' : currentTextColor }} />
+          <Button variant="ghost" size="icon" title="Text Formatting">
+            <Baseline className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48 overflow-y-scroll">
-          {COLOR_PALETTE.map(color => (
-            <DropdownMenuItem key={color.name} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
-              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
-              {color.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Highlight Color">
-             <Highlighter className="h-4 w-4" style={{ color: currentHighlightColor === 'transparent' || currentHighlightColor === 'inherit' ? 'currentColor' : 'hsl(var(--accent))', fillOpacity: currentHighlightColor !== 'transparent' && currentHighlightColor !== 'inherit' ? 0.3 : 0 }}/>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48">
-           <DropdownMenuItem onClick={() => onHighlightColorSelect('transparent')} className={currentHighlightColor === 'transparent' ? 'bg-accent text-accent-foreground' : ''}>
-             <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
-              None
-            </DropdownMenuItem>
-          {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( 
-            <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
-              <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
-              {color.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      
-       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="More text formatting">
-            <CaseSensitive className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} className={isStrikethrough ? 'bg-accent text-accent-foreground' : ''}>
+        <DropdownMenuContent className="w-60" align="start">
+          <DropdownMenuCheckboxItem checked={isBold} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}>
+            <Bold className="mr-2 h-4 w-4" /> Bold
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isItalic} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}>
+            <Italic className="mr-2 h-4 w-4" /> Italic
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isUnderline} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}>
+            <Underline className="mr-2 h-4 w-4" /> Underline
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
             <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')} className={isHighlight ? 'bg-accent text-accent-foreground' : ''}>
-             <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
+            <Subscript className="mr-2 h-4 w-4" /> Subscript
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isSuperscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')}>
+            <Superscript className="mr-2 h-4 w-4" /> Superscript
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isCode} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}>
+            <Code className="mr-2 h-4 w-4" /> Inline Code
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+           <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
+            <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Palette className="mr-2 h-4 w-4" style={{color: currentTextColor === 'inherit' || currentTextColor.startsWith('hsl(var(--foreground))') ? 'currentColor' : currentTextColor }}/> Text Color
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent className="w-48 max-h-60 overflow-y-auto">
+                {COLOR_PALETTE.map(color => (
+                  <DropdownMenuItem key={color.name + '-text'} onClick={() => onTextColorSelect(color.value)} className={currentTextColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+                    <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+                    {color.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Highlighter className="mr-2 h-4 w-4" style={{ color: currentHighlightColor === 'transparent' || currentHighlightColor === 'inherit' ? 'currentColor' : 'hsl(var(--accent))', fillOpacity: currentHighlightColor !== 'transparent' && currentHighlightColor !== 'inherit' ? 0.3 : 0 }} /> Highlight Color
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent className="w-48 max-h-60 overflow-y-auto">
+                <DropdownMenuItem onClick={() => onHighlightColorSelect('transparent')} className={currentHighlightColor === 'transparent' ? 'bg-accent text-accent-foreground' : ''}>
+                  <div className="w-4 h-4 rounded-full border mr-2 flex items-center justify-center" style={{borderColor: 'hsl(var(--border))'}}><Eraser className="h-3 w-3 opacity-50"/></div>
+                  None
+                </DropdownMenuItem>
+                {COLOR_PALETTE.filter(c => c.value !== 'inherit').map(color => ( 
+                  <DropdownMenuItem key={color.name + '-bg'} onClick={() => onHighlightColorSelect(color.value)} className={currentHighlightColor === color.value ? 'bg-accent text-accent-foreground' : ''}>
+                    <div className="w-4 h-4 rounded-full border mr-2" style={{backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value, borderColor: 'hsl(var(--border))'}}></div>
+                    {color.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+           <DropdownMenuItem onClick={insertLink}>
+            <Link2 className="mr-2 h-4 w-4" /> {isLink ? 'Edit Link' : 'Insert Link'}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
-          <CaseLower className="mr-2 h-4 w-4" /> lowercase
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
-             <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
-          <CaseSensitive className="mr-2 h-4 w-4" /> Capitalize Case
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+                <CaseSensitive className="mr-2 h-4 w-4" /> Change Case
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => transformTextCase('lowercase')}>
+                        <CaseLower className="mr-2 h-4 w-4" /> lowercase
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => transformTextCase('uppercase')}>
+                        <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => transformTextCase('capitalize')}>
+                        <CaseSensitive className="mr-2 h-4 w-4" /> Capitalize Case
+                    </DropdownMenuItem>
+                </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={clearFormatting}>
+            <Eraser className="mr-2 h-4 w-4" /> Clear Formatting
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <Button variant="ghost" size="icon" onClick={clearFormatting} aria-label="Clear Formatting" title="Clear Formatting">
-        <Eraser className="h-4 w-4" />
-      </Button>
+      
       <Separator orientation="vertical" className="h-6 mx-1" />
       
       <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
@@ -1032,3 +1052,5 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
+
+
