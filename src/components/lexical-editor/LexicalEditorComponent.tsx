@@ -13,6 +13,7 @@ import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
 import 'katex/dist/katex.min.css';
 import { mergeRegister } from '@lexical/utils';
+import { $findMatchingParent } from '@lexical/utils';
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -39,8 +40,9 @@ import {
   OUTDENT_CONTENT_COMMAND,
   $createParagraphNode,
   $isRootOrShadowRoot,
+  $isTextNode, 
 } from 'lexical';
-import { $findMatchingParent } from '@lexical/utils';
+
 import { $isListNode, ListNode } from '@lexical/list';
 import { $isCodeNode, CodeNode } from '@lexical/code';
 import { $isHeadingNode, $isQuoteNode as isQuoteNodeLexical, HeadingNode } from '@lexical/rich-text';
@@ -139,7 +141,7 @@ function EditorLogicHandler() {
                 event.preventDefault();
                 editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
                 return true;
-              case '\\': // Clear Formatting: Ctrl+\
+              case '\\': // Clear Formatting: Ctrl+\\
                 event.preventDefault();
                 editor.dispatchCommand(CUSTOM_CLEAR_FORMATTING_COMMAND, undefined);
                 return true;

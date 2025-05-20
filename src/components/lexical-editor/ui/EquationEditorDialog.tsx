@@ -11,11 +11,10 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Using Input for single line for now
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import KatexRenderer from '../components/KatexRenderer';
+import KatexRenderer from '../components/KatexRenderer'; // Ensure this path is correct
 
 interface EquationEditorDialogProps {
   isOpen: boolean;
@@ -36,6 +35,7 @@ export default function EquationEditorDialog({
   const [isInline, setIsInline] = React.useState(initialInline);
   const [previewEquation, setPreviewEquation] = React.useState(initialEquation);
   const [previewInline, setPreviewInline] = React.useState(initialInline);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -43,6 +43,10 @@ export default function EquationEditorDialog({
       setIsInline(initialInline);
       setPreviewEquation(initialEquation);
       setPreviewInline(initialInline);
+      // Focus the input when the dialog opens
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100); // Small delay to ensure dialog is rendered
     }
   }, [isOpen, initialEquation, initialInline]);
 
@@ -64,18 +68,25 @@ export default function EquationEditorDialog({
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit Equation</DialogTitle>
+          <DialogTitle>{initialEquation ? 'Edit Equation' : 'Insert Equation'}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label htmlFor="equation-input">LaTeX Equation</Label>
             <Textarea
               id="equation-input"
+              ref={inputRef}
               value={equation}
               onChange={(e) => setEquation(e.target.value)}
-              placeholder="e.g. \frac{a}{b}"
-              className="min-h-[100px] font-mono"
+              placeholder="e.g. \\frac{a}{b}"
+              className="min-h-[100px] font-mono text-sm"
               rows={3}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
             />
           </div>
           <div className="flex items-center space-x-2">
@@ -84,15 +95,19 @@ export default function EquationEditorDialog({
               checked={isInline}
               onCheckedChange={(checked) => setIsInline(Boolean(checked))}
             />
-            <Label htmlFor="inline-equation">Display as inline equation</Label>
+            <Label htmlFor="inline-equation" className="text-sm">Display as inline equation</Label>
           </div>
           <div className="mt-4">
             <Label>Preview:</Label>
-            <div className={ `p-2 border rounded min-h-[50px] flex items-center justify-center ${previewInline ? '' : 'bg-muted/30'}`}>
+            <div className={ `p-2 border rounded min-h-[60px] flex items-center justify-center ${previewInline ? '' : 'bg-muted/30'}`}>
               {previewEquation.trim() ? (
-                <KatexRenderer equation={previewEquation} inline={previewInline} />
+                <KatexRenderer 
+                    equation={previewEquation} 
+                    inline={previewInline} 
+                    className={previewInline ? "text-base" : "text-lg"} // Adjust preview size
+                />
               ) : (
-                <span className="text-muted-foreground">Enter LaTeX to see preview</span>
+                <span className="text-muted-foreground text-sm">Enter LaTeX to see preview</span>
               )}
             </div>
           </div>
@@ -104,7 +119,7 @@ export default function EquationEditorDialog({
             </Button>
           </DialogClose>
           <Button type="button" onClick={handleSubmit}>
-            Insert
+            {initialEquation ? 'Update' : 'Insert'}
           </Button>
         </DialogFooter>
       </DialogContent>

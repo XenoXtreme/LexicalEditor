@@ -7,7 +7,7 @@ import { AutoLinkNode, LinkNode } from "@lexical/link";
 import type { Klass, LexicalNode } from "lexical";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { ImageNode } from "./ImageNode.tsx"; 
-import { EquationNode } from "./EquationNode.tsx"; // Added EquationNode
+import { EquationNode } from "./EquationNode.tsx"; 
 
 
 const EditorNodes: Array<Klass<LexicalNode>> = [
@@ -25,9 +25,6 @@ const EditorNodes: Array<Klass<LexicalNode>> = [
   HorizontalRuleNode,
   ImageNode,
   EquationNode,
-  // CollapsibleContainerNode, // Removed
-  // CollapsibleContentNode, // Removed
-  // CollapsibleTitleNode, // Removed
 ];
 
 export default EditorNodes;

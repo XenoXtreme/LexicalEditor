@@ -175,11 +175,9 @@ export class EquationNode extends DecoratorNode<JSX.Element> {
 
   exportDOM(editor: LexicalEditor): DOMExportOutput {
     const {element} = super.exportDOM(editor);
-    if (element) {
+    if (element && element instanceof HTMLElement) { // Check if element is HTMLElement
       element.setAttribute('data-lexical-equation', this.__equation);
       element.setAttribute('data-lexical-inline', String(this.__inline));
-      // Optional: Could render KaTeX directly to innerHTML for static export
-      // For dynamic editor, the decorator handles rendering.
     }
     return {element};
   }

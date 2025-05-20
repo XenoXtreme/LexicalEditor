@@ -18,7 +18,7 @@ import {
 } from 'lexical';
 
 import KatexRenderer from './KatexRenderer';
-import { $isEquationNode } from '../nodes/EquationNode';
+import { $isEquationNode } from '../nodes/EquationNode'; // Corrected import path
 import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin'; 
 import { cn } from '@/lib/utils';
 
@@ -51,16 +51,15 @@ export default function EquationComponent({
       }
       return false;
     },
-    [isSelected, nodeKey, editor], // editor added to dependencies
+    [isSelected, nodeKey, editor], 
   );
 
   const onEdit = React.useCallback(() => {
-    // Dispatch a command to open the modal for editing this specific node
     editor.dispatchCommand(INSERT_EQUATION_COMMAND, { 
         showModal: 'update', 
         nodeKeyToUpdate: nodeKey,
-        equation: equation, // Pass current equation
-        inline: inline,     // Pass current inline state
+        equation: equation, 
+        inline: inline,     
     });
   }, [editor, nodeKey, equation, inline]);
 
@@ -70,7 +69,8 @@ export default function EquationComponent({
       editor.registerCommand<MouseEvent>(
         CLICK_COMMAND,
         (event) => {
-          if (event.target === equationRef.current || equationRef.current?.contains(event.target as Node)) {
+          const target = event.target as Node;
+          if (equationRef.current && (equationRef.current === target || equationRef.current.contains(target))) {
             if (!event.shiftKey) {
               clearSelection();
             }
@@ -91,7 +91,7 @@ export default function EquationComponent({
         (event) => {
           if (isSelected && $isNodeSelection($getSelection())) {
             event.preventDefault();
-            onEdit(); // Open editor on Enter when selected
+            onEdit(); 
             return true;
           }
           return false;
@@ -115,18 +115,16 @@ export default function EquationComponent({
 
 
   return (
-    <div ref={equationRef} className={cn("cursor-pointer relative", isSelected && "outline outline-2 outline-primary rounded-sm", inline ? 'inline-block' : 'block my-2')}>
+    <div 
+      ref={equationRef} 
+      className={cn(
+        "cursor-pointer relative", 
+        isSelected && "outline outline-2 outline-primary rounded-sm", 
+        inline ? 'inline-block align-middle p-1' : 'block my-2 p-2' 
+      )}
+      data-lexical-equation-component // For easier DOM selection if needed
+    >
       <KatexRenderer equation={equation} inline={inline} />
-      {/* Add a small edit button or visual cue when selected */}
-      {/* {isSelected && (
-        <button 
-          onClick={onEdit} 
-          className="absolute top-0 right-0 bg-gray-200 p-1 text-xs rounded"
-          aria-label="Edit equation"
-        >
-          Edit
-        </button>
-      )} */}
     </div>
   );
 }

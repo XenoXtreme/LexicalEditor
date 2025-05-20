@@ -21,26 +21,25 @@ import {
   $createTextNode,
   INDENT_CONTENT_COMMAND,
   OUTDENT_CONTENT_COMMAND,
-  createCommand, // Import createCommand
-  LexicalCommand, // Import LexicalCommand
+  LexicalCommand,
+  createCommand,
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
 import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, $createCodeNode, getCodeLanguages, getDefaultCodeLanguage, CodeNode } from '@lexical/code';
 import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
 import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as isQuoteNodeLexical, HeadingTagType } from '@lexical/rich-text';
-import * as LexicalSelectionUtil from '@lexical/selection'; // Using namespace import
+import * as LexicalSelectionUtil from '@lexical/selection';
 
 
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
-// Equation related imports are removed as the feature was removed due to install issues with @lexical/math
-// import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
+import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
 
 
 import {
-  Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, /* Calculator, */ CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
+  Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator, CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -55,8 +54,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-  // DropdownMenuRadioGroup, // Not used
-  // DropdownMenuRadioItem, // Not used
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -173,11 +170,11 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}, { name: 'Dark Gray', value: '#424242'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType, shortcut?: string }[] = [
-  { value: 'left', label: 'Left Align', icon: AlignLeft, shortcut: 'Ctrl+Shift+L' },
-  { value: 'center', label: 'Center Align', icon: AlignCenter, shortcut: 'Ctrl+Shift+E' },
-  { value: 'right', label: 'Right Align', icon: AlignRight, shortcut: 'Ctrl+Shift+R' },
-  { value: 'justify', label: 'Justify Align', icon: AlignJustify, shortcut: 'Ctrl+Shift+J' },
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType }[] = [
+  { value: 'left', label: 'Left Align', icon: AlignLeft },
+  { value: 'center', label: 'Center Align', icon: AlignCenter },
+  { value: 'right', label: 'Right Align', icon: AlignRight },
+  { value: 'justify', label: 'Justify Align', icon: AlignJustify },
   { value: 'start', label: 'Start Align', icon: AlignLeft },
   { value: 'end', label: 'End Align', icon: AlignRight },
 ];
@@ -237,7 +234,6 @@ export default function ToolbarPlugin() {
   
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('');
-  const [linkDialogInitialUrl, setLinkDialogInitialUrl] = useState('');
 
 
   const [isGeneratingText, setIsGeneratingText] = useState(false);
@@ -279,14 +275,7 @@ export default function ToolbarPlugin() {
 
       const node = getSelectedNode(selection);
       const parentLink = $findMatchingParent(node, $isLinkNode);
-      if (parentLink || $isLinkNode(node)) {
-        setIsLink(true);
-        const url = $isLinkNode(parentLink) ? parentLink.getURL() : ($isLinkNode(node) ? node.getURL() : '');
-        setLinkDialogInitialUrl(url); 
-      } else {
-        setIsLink(false);
-        setLinkDialogInitialUrl('');
-      }
+      setIsLink(!!parentLink || $isLinkNode(node));
       
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
@@ -381,29 +370,25 @@ export default function ToolbarPlugin() {
         COMMAND_PRIORITY_LOW,
       ),
       editor.registerCommand(OPEN_LINK_DIALOG_COMMAND, () => {
-        openLinkDialog();
+        editor.getEditorState().read(() => {
+          const selection = $getSelection();
+          let urlToEdit = 'https://';
+          if ($isRangeSelection(selection)) {
+              const node = getSelectedNode(selection);
+              const parentLink = $findMatchingParent(node, $isLinkNode) || $findMatchingParent(node.getParentOrThrow(), $isLinkNode);
+              if (parentLink && $isLinkNode(parentLink)) {
+                  urlToEdit = parentLink.getURL();
+              } else if ($isLinkNode(node)) {
+                  urlToEdit = node.getURL();
+              }
+          }
+          setLinkDialogUrl(urlToEdit); 
+        });
+        setIsLinkDialogOpen(true);
         return true;
       }, LowPriority)
     );
   }, [editor, updateToolbar]);
-
-const openLinkDialog = useCallback(() => {
-    editor.getEditorState().read(() => {
-        const selection = $getSelection();
-        let urlToEdit = 'https://';
-        if ($isRangeSelection(selection)) {
-            const node = getSelectedNode(selection);
-            const parentLink = $findMatchingParent(node, $isLinkNode) || $findMatchingParent(node.getParentOrThrow(), $isLinkNode);
-            if (parentLink && $isLinkNode(parentLink)) {
-                urlToEdit = parentLink.getURL();
-            } else if ($isLinkNode(node)) {
-                urlToEdit = node.getURL();
-            }
-        }
-        setLinkDialogUrl(urlToEdit); // Pre-fill with https:// or actual link
-    });
-    setIsLinkDialogOpen(true);
-}, [editor]);
 
 
 const handleLinkDialogSubmit = useCallback(() => {
@@ -500,7 +485,7 @@ const handleLinkDialogSubmit = useCallback(() => {
             const codeBlockNode = $getNearestNodeOfType(node, CodeNode); 
             if (codeBlockNode && $isCodeNode(codeBlockNode)) {
                  codeBlockNode.setLanguage(langToSet as string);
-            } else { // If not in a code block, but changing language for next code block
+            } else { 
                  LexicalSelectionUtil.$setBlocksType(selection, () => $createCodeNode(langToSet || getDefaultCodeLanguage()));
             }
         }
@@ -746,7 +731,7 @@ const handleLinkDialogSubmit = useCallback(() => {
             <CodeIcon className="mr-2 h-4 w-4" /> Inline Code
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
-            <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
+            <Highlighter className="mr-2 h-4 w-4" /> Highlight Text (Default)
           </DropdownMenuCheckboxItem>
           
           <DropdownMenuSeparator />
@@ -908,15 +893,13 @@ const handleLinkDialogSubmit = useCallback(() => {
                   <ImageIcon className="mr-2 h-4 w-4" /> Image
               </DropdownMenuItem>
             </DialogTrigger>
-            {/* Equation button removed due to install issues
             <DropdownMenuItem
               onClick={() => {
-                // editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
+                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
               }}
             >
               <Calculator className="mr-2 h-4 w-4" /> Equation
             </DropdownMenuItem>
-            */}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -977,7 +960,12 @@ const handleLinkDialogSubmit = useCallback(() => {
             >
               <opt.icon className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">{opt.label}</span>
-              {opt.shortcut && <DropdownMenuShortcut>{opt.shortcut}</DropdownMenuShortcut>}
+               <DropdownMenuShortcut>{
+                  opt.value === 'left' ? 'Ctrl+Shift+L' :
+                  opt.value === 'center' ? 'Ctrl+Shift+E' :
+                  opt.value === 'right' ? 'Ctrl+Shift+R' :
+                  opt.value === 'justify' ? 'Ctrl+Shift+J' : ''
+              }</DropdownMenuShortcut>
             </DropdownMenuItem>
           ))}
            <DropdownMenuItem
@@ -1010,9 +998,9 @@ const handleLinkDialogSubmit = useCallback(() => {
       <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{linkDialogInitialUrl && linkDialogInitialUrl !== 'https://' ? "Edit Link" : "Insert Link"}</DialogTitle>
+                <DialogTitle>{isLink ? "Edit Link" : "Insert Link"}</DialogTitle>
                 <DialogDescription>
-                    {linkDialogInitialUrl && linkDialogInitialUrl !== 'https://' ? "Update the URL for the link." : "Enter the URL you want to link to."}
+                    {isLink ? "Update the URL for the link." : "Enter the URL you want to link to."}
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
