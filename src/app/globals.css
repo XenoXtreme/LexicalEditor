@@ -221,4 +221,44 @@ body {
      @apply line-through text-muted-foreground;
   }
 
+  /* Image Node Styles */
+  .editor-image {
+    @apply my-2 block cursor-default; /* Default cursor for image wrapper */
+  }
+  .editor-image img {
+    @apply max-w-full h-auto block;
+  }
+  /* Add styles for resizable image selections if needed */
+
+  /* Table Node Styles */
+  .Lexical__table {
+    @apply w-full my-2 border-collapse border border-input;
+  }
+  .Lexical__tableCell {
+    @apply border border-input p-2 align-top;
+  }
+  .Lexical__tableCellHeader {
+    @apply bg-muted font-semibold border border-input p-2 text-left align-top;
+  }
+  .Lexical__tableRow {
+    @apply border-b border-input;
+  }
+
+  /* Horizontal Rule Node Styles */
+  .Lexical__horizontalRule {
+    @apply my-4 border-t border-border;
+  }
+  
+  /* Collapsible Node Styles */
+  .Collapsible__container {
+    @apply my-2 border border-input rounded;
+  }
+  .Collapsible__title {
+    @apply p-2 bg-muted cursor-pointer font-medium hover:bg-accent/20;
+  }
+  .Collapsible__content {
+    @apply p-2 border-t border-input;
+  }
+
+
 }

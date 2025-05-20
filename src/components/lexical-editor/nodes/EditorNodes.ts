@@ -4,8 +4,14 @@ import { ListItemNode, ListNode } from "@lexical/list";
 import { CodeHighlightNode, CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
 import type { Klass, LexicalNode } from "lexical";
-// Potentially add ImageNode if implementing image uploads/embedding
-// import { ImageNode } from "./ImageNode"; 
+import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
+import { ImageNode } from "./ImageNode.tsx"; 
+import {
+  CollapsibleContainerNode,
+  CollapsibleContentNode,
+  CollapsibleTitleNode,
+} from '@lexical/collapsible';
+
 
 const EditorNodes: Array<Klass<LexicalNode>> = [
   HeadingNode,
@@ -19,7 +25,11 @@ const EditorNodes: Array<Klass<LexicalNode>> = [
   TableRowNode,
   AutoLinkNode,
   LinkNode,
-  // ImageNode, // If using images
+  HorizontalRuleNode,
+  ImageNode,
+  CollapsibleContainerNode,
+  CollapsibleContentNode,
+  CollapsibleTitleNode,
 ];
 
 export default EditorNodes;

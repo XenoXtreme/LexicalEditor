@@ -21,11 +21,11 @@ const theme: EditorThemeClasses = {
     ol: 'editor-list-ol',
     ul: 'editor-list-ul',
     listitem: 'editor-listitem',
-    checklist: 'editor-checklist', // For checklist container if needed
+    checklist: 'editor-checklist', 
     listitemChecked: 'editor-listitem-checked',
     listitemUnchecked: 'editor-listitem-unchecked',
   },
-  image: 'editor-image', 
+  image: 'editor-image my-2 block', // class for custom ImageNode wrapper
   link: 'editor-link',
   text: {
     bold: 'editor-text-bold',
@@ -34,7 +34,7 @@ const theme: EditorThemeClasses = {
     strikethrough: 'editor-text-strikethrough',
     underlineStrikethrough: 'editor-text-underlineStrikethrough',
     code: 'editor-text-code',
-    highlight: 'editor-text-highlight', // For default highlight format
+    highlight: 'editor-text-highlight', 
   },
   code: 'editor-code-block', 
   codeHighlight: { 
@@ -67,6 +67,14 @@ const theme: EditorThemeClasses = {
     'url': 'text-yellow-600 dark:text-yellow-400',
     'variable': 'text-orange-600 dark:text-orange-400',
   },
+  table: 'w-full my-2 border-collapse border border-input',
+  tableCell: 'border border-input p-2 align-top',
+  tableCellHeader: 'bg-muted font-semibold border border-input p-2 text-left align-top',
+  tableRow: 'border-b border-input',
+  horizontalRule: 'my-4 border-t border-border',
+  collapsibleContainer: 'my-2 border border-input rounded',
+  collapsibleTitle: 'p-2 bg-muted cursor-pointer font-medium hover:bg-accent/20',
+  collapsibleContent: 'p-2 border-t border-input',
 };
 
 export default theme;

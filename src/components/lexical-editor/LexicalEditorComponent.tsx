@@ -1,6 +1,6 @@
 
 "use client";
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -9,7 +9,7 @@ import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import { TRANSFORMERS } from '@lexical/markdown';
-import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin'; // Local wrapper for syntax highlighting
+import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin'; 
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -17,7 +17,11 @@ import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
-import { Toaster } from "@/components/ui/toaster"; // For AI suggestions
+import { Toaster } from "@/components/ui/toaster"; 
+
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRuleNodePlugin';
+import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
+import { CollapsiblePlugin } from '@lexical/react/LexicalCollapsiblePlugin';
 
 
 // Initial editor state - can be empty or pre-filled
@@ -58,7 +62,7 @@ export default function LexicalEditorComponent(): JSX.Element {
     namespace: 'LexicalCanvasEditor',
     theme: EditorTheme,
     nodes: EditorNodes,
-    editorState: JSON.stringify(initialJsonState), // Can also be a function
+    editorState: JSON.stringify(initialJsonState), 
     onError: (error: Error) => {
       console.error("Lexical editor error:", error);
     },
@@ -79,6 +83,9 @@ export default function LexicalEditorComponent(): JSX.Element {
           <ListPlugin />
           <LinkPlugin />
           <CodeHighlightPlugin />
+          <HorizontalRulePlugin />
+          <TablePlugin />
+          <CollapsiblePlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         </div>
       </div>

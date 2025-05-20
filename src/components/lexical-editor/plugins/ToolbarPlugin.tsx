@@ -19,6 +19,8 @@ import {
   ElementFormatType,
   $getRoot,
   $createTextNode,
+  LexicalCommand,
+  createCommand,
 } from 'lexical';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
@@ -27,8 +29,14 @@ import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexi
 import { $createHeadingNode, $isHeadingNode, $isQuoteNode, HeadingTagType, /* QuoteNode */ } from '@lexical/rich-text'; // QuoteNode removed as $createQuoteNode is used.
 import * as LexicalSelectionUtil from '@lexical/selection';
 
+import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
+import { INSERT_TABLE_COMMAND } from '@lexical/table';
+import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
+import { INSERT_COLLAPSIBLE_COMMAND } from '@lexical/collapsible';
+
+
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2, Palette, CaseSensitive, Eraser, Copy, FontSize, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter,
+  Bold, Italic, Underline, Strikethrough, Code, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Sparkles, Loader2, Palette, CaseSensitive, Eraser, Copy, FontSize, PilcrowSquare, Baseline, CaseUpper, CaseLower, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, ChevronsUpDown, Rows, Columns,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -38,10 +46,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  // DropdownMenuSub, // Removed as not used
-  // DropdownMenuSubContent, // Removed as not used
-  // DropdownMenuSubTrigger, // Removed as not used
-  // DropdownMenuPortal, // Removed as not used
 } from '@/components/ui/dropdown-menu';
 import {
   Select,
@@ -67,6 +71,10 @@ import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-f
 
 
 const LowPriority = COMMAND_PRIORITY_LOW; 
+
+// Custom command for inserting image
+export const INSERT_IMAGE_COMMAND: LexicalCommand<{altText: string; src: string; width?: number; height?: number}> = createCommand('INSERT_IMAGE_COMMAND');
+
 
 const supportedBlockTypes = new Set([
   'paragraph',
@@ -173,6 +181,16 @@ export default function ToolbarPlugin() {
   const [isGenerateTextDialogOpen, setIsGenerateTextDialogOpen] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [isGeneratingText, setIsGeneratingText] = useState(false);
+  
+  const [isInsertTableDialogOpen, setIsInsertTableDialogOpen] = useState(false);
+  const [tableRows, setTableRows] = useState('3');
+  const [tableColumns, setTableColumns] = useState('3');
+
+  const [isInsertImageDialogOpen, setIsInsertImageDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageAltText, setImageAltText] = useState('');
+
+
   const { toast } = useToast();
 
 
@@ -211,7 +229,7 @@ export default function ToolbarPlugin() {
           setBlockType(type);
         } else {
           let type = $isHeadingNode(element) ? element.getTag() : element.getType();
-           if ($isQuoteNode(element)) { // Using $isQuoteNode from rich-text
+           if ($isQuoteNode(element)) { 
             type = 'quote';
           } else if ($isCodeNode(element)) {
             type = 'code';
@@ -273,6 +291,49 @@ export default function ToolbarPlugin() {
         },
         LowPriority,
       ),
+      // Register custom image command
+      editor.registerCommand(
+        INSERT_IMAGE_COMMAND,
+        (payload) => {
+          const { altText, src, width, height } = payload;
+          const imageNode = $createImageNode({ altText, src, width, height });
+          $getSelection()?.insertNodes([imageNode]);
+          if ($isRootOrShadowRoot($getSelection()?.anchor.getNode())) {
+            $getSelection()?.insertParagraph();
+          }
+          return true;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+       editor.registerCommand(
+        INSERT_COLLAPSIBLE_COMMAND,
+        () => {
+          // Logic to insert collapsible container is handled by CollapsiblePlugin
+          // This command is just to trigger it from toolbar
+          // The plugin itself handles node creation.
+          // We just need to make sure it's dispatched.
+          // editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined); // This might be redundant if the plugin listens to it already.
+          // Let's make sure the plugin does its job or we manually insert nodes.
+          // For now, let the plugin handle it if correctly configured.
+          // If not, manual insertion would be:
+          // editor.update(() => {
+          //  const selection = $getSelection();
+          //  if ($isRangeSelection(selection)) {
+          //    // Placeholder: Real logic in plugin or custom here
+          //    const titleNode = $createCollapsibleTitleNode();
+          //    titleNode.append($createTextNode('Title'));
+          //    const contentNode = $createCollapsibleContentNode();
+          //    contentNode.append($createParagraphNode().append($createTextNode('Content')));
+          //    const containerNode = $createCollapsibleContainerNode(true); // true for initially open
+          //    containerNode.append(titleNode);
+          //    containerNode.append(contentNode);
+          //    selection.insertNodes([containerNode]);
+          //  }
+          // });
+          return false; // Let the plugin handle it.
+        },
+        COMMAND_PRIORITY_LOW,
+      )
     );
   }, [editor, updateToolbar]);
 
@@ -310,11 +371,11 @@ export default function ToolbarPlugin() {
       } else if (type === 'quote') {
         const anchorNode = selection.anchor.getNode();
         const topLevelElement = anchorNode.getTopLevelElementOrThrow();
-        if ($isQuoteNode(topLevelElement)) { // Using $isQuoteNode from rich-text
+        if ($isQuoteNode(topLevelElement)) { 
             LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
         } else {
             LexicalSelectionUtil.$setBlocksType(selection, () => {
-                const quoteNode = $createQuoteNode(); // From rich-text
+                const quoteNode = $createQuoteNode(); 
                 return quoteNode;
             });
         }
@@ -390,12 +451,6 @@ export default function ToolbarPlugin() {
       if ($isRangeSelection(selection)) {
         // LexicalSelectionUtil.$clearFormatting(selection); // Temporarily removed due to persistent import error
         console.warn("Lexical Canvas: Clear formatting feature is temporarily unavailable due to a module resolution issue with $clearFormatting. Please check your project's dependencies and build cache.");
-        // You might want to inform the user via a toast notification as well, if preferred.
-        // toast({
-        //   variant: "destructive",
-        //   title: "Feature Unavailable",
-        //   description: "Clear Formatting is temporarily disabled. Please try reinstalling dependencies.",
-        // });
       }
     });
   };
@@ -486,6 +541,32 @@ export default function ToolbarPlugin() {
     } finally {
       setIsGeneratingText(false);
     }
+  };
+
+  const handleInsertTable = () => {
+    const rows = parseInt(tableRows, 10);
+    const columns = parseInt(tableColumns, 10);
+    if (isNaN(rows) || isNaN(columns) || rows <= 0 || columns <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Table Dimensions',
+        description: 'Please enter valid numbers for rows and columns.',
+      });
+      return;
+    }
+    editor.dispatchCommand(INSERT_TABLE_COMMAND, {columns: columns.toString(), rows: rows.toString()});
+    setIsInsertTableDialogOpen(false);
+    setTableRows('3');
+    setTableColumns('3');
+  };
+
+  const handleInsertImage = () => {
+    const src = imageUrl.trim() || `https://placehold.co/400x300.png`; // Default placeholder
+    const alt = imageAltText.trim() || 'Placeholder image';
+    editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src, altText: alt, width: 400, height: 300});
+    setIsInsertImageDialogOpen(false);
+    setImageUrl('');
+    setImageAltText('');
   };
 
 
@@ -613,6 +694,39 @@ export default function ToolbarPlugin() {
       </Button>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
+      {/* Insert Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Insert">
+            <PlusSquare className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
+            <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
+          </DropdownMenuItem>
+          
+          <DialogTrigger asChild>
+            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <TableIcon className="mr-2 h-4 w-4" /> Table
+            </DropdownMenuItem>
+          </DialogTrigger>
+
+          <DialogTrigger asChild>
+             <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <ImageIcon className="mr-2 h-4 w-4" /> Image
+            </DropdownMenuItem>
+          </DialogTrigger>
+
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined)}>
+            <ChevronsUpDown className="mr-2 h-4 w-4" /> Collapsible
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Separator orientation="vertical" className="h-6 mx-1" />
+      {/* End Insert Dropdown */}
+
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" title="Text Color">
@@ -676,6 +790,7 @@ export default function ToolbarPlugin() {
 
       <Dialog open={isGenerateTextDialogOpen} onOpenChange={(open) => {
         setIsGenerateTextDialogOpen(open);
+        if (!open) setGenerationPrompt(''); // Clear prompt on close
       }}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" aria-label="Generate Text with AI" title="Generate Text with AI">
@@ -726,6 +841,57 @@ export default function ToolbarPlugin() {
         </DialogContent>
       </Dialog>
 
+      {/* Insert Table Dialog */}
+      <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
+        {/* <DialogTrigger asChild> must be part of the DropdownMenuItem for Table */}
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Insert Table</DialogTitle>
+            <DialogDescription>Specify the number of rows and columns.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
+              <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
+              <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+            <Button type="button" onClick={handleInsertTable}>Insert</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Insert Image Dialog */}
+       <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
+        {/* <DialogTrigger asChild> must be part of the DropdownMenuItem for Image */}
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Insert Image</DialogTitle>
+            <DialogDescription>Enter image URL and alternative text.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
+              <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
+              <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text for the image" />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+            <Button type="button" onClick={handleInsertImage}>Insert</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       <Separator orientation="vertical" className="h-6 mx-1" />
       <Button variant={elementFormat === 'left' ? 'secondary' : 'ghost'} size="icon" onClick={() => formatElement('left')} aria-label="Align Left" title="Align Left">
         <AlignLeft className="h-4 w-4" />
@@ -742,4 +908,3 @@ export default function ToolbarPlugin() {
     </div>
   );
 }
-
