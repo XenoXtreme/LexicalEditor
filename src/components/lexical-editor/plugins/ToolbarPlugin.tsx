@@ -12,7 +12,6 @@ import {
   FORMAT_ELEMENT_COMMAND,
   $getSelection,
   $isRangeSelection,
-  $isRootOrShadowRoot,
   $createParagraphNode,
   $getNodeByKey,
   COMMAND_PRIORITY_LOW,
@@ -23,8 +22,9 @@ import {
   OUTDENT_CONTENT_COMMAND,
   LexicalCommand,
   createCommand,
+  $isRootOrShadowRoot,
 } from 'lexical';
-import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
+import { $isLinkNode, TOGGLE_LINK_COMMAND, $createLinkNode, $isAutoLinkNode } from '@lexical/link';
 import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, ListNode } from '@lexical/list';
 import { $isCodeNode, CODE_LANGUAGE_FRIENDLY_NAME_MAP, $createCodeNode, getCodeLanguages, getDefaultCodeLanguage, CodeNode } from '@lexical/code';
 import { $getNearestNodeOfType, mergeRegister, $findMatchingParent } from '@lexical/utils';
@@ -36,10 +36,11 @@ import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontal
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, ImageNode } from '../nodes/ImageNode.tsx';
 import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
+import { INSERT_COLLAPSIBLE_COMMAND } from './Collapsible';
 
 
 import {
-  Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIcon, Sparkles, Loader2, Indent, Outdent, Calculator, CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline
+  Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, Image as ImageIconLucide, Sparkles, Loader2, Indent, Outdent, Calculator, CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline, ChevronsUpDown, UploadCloud
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -66,7 +67,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -85,8 +85,21 @@ export type TextCaseType = 'uppercase' | 'lowercase' | 'capitalize';
 export const CUSTOM_TRANSFORM_TEXT_CASE_COMMAND: LexicalCommand<TextCaseType> = createCommand('CUSTOM_TRANSFORM_TEXT_CASE_COMMAND');
 
 
-// Custom command for inserting image
-export const INSERT_IMAGE_COMMAND: LexicalCommand<{altText: string; src: string; width?: number; height?: number}> = createCommand('INSERT_IMAGE_COMMAND');
+export type InsertImagePayload = {
+  altText: string;
+  src: string;
+  width?: number;
+  height?: number;
+  showModal?: boolean; // To trigger dialog opening
+};
+export const INSERT_IMAGE_COMMAND: LexicalCommand<InsertImagePayload> = createCommand('INSERT_IMAGE_COMMAND');
+
+export type InsertTablePayload = {
+  columns: string;
+  rows: string;
+  showModal?: boolean; // To trigger dialog opening
+};
+export const INSERT_TABLE_DIALOG_COMMAND: LexicalCommand<void> = createCommand('INSERT_TABLE_DIALOG_COMMAND');
 
 
 const LowPriority = COMMAND_PRIORITY_LOW;
@@ -170,11 +183,11 @@ const COLOR_PALETTE: { name: string; value: string; isThemeVar?: boolean }[] = [
   { name: 'Gray', value: '#757575'}, { name: 'Dark Gray', value: '#424242'}
 ];
 
-const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType }[] = [
-  { value: 'left', label: 'Left Align', icon: AlignLeft },
-  { value: 'center', label: 'Center Align', icon: AlignCenter },
-  { value: 'right', label: 'Right Align', icon: AlignRight },
-  { value: 'justify', label: 'Justify Align', icon: AlignJustify },
+const ALIGNMENT_OPTIONS: { value: ElementFormatType | 'start' | 'end'; label: string; icon: React.ElementType, shortcut?: string }[] = [
+  { value: 'left', label: 'Left Align', icon: AlignLeft, shortcut: 'Ctrl+Shift+L' },
+  { value: 'center', label: 'Center Align', icon: AlignCenter, shortcut: 'Ctrl+Shift+E' },
+  { value: 'right', label: 'Right Align', icon: AlignRight, shortcut: 'Ctrl+Shift+R' },
+  { value: 'justify', label: 'Justify Align', icon: AlignJustify, shortcut: 'Ctrl+Shift+J' },
   { value: 'start', label: 'Start Align', icon: AlignLeft },
   { value: 'end', label: 'End Align', icon: AlignRight },
 ];
@@ -231,9 +244,11 @@ export default function ToolbarPlugin() {
   const [isInsertImageDialogOpen, setIsInsertImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageAltText, setImageAltText] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('');
+  const [isEditingLink, setIsEditingLink] = useState(false);
 
 
   const [isGeneratingText, setIsGeneratingText] = useState(false);
@@ -242,6 +257,28 @@ export default function ToolbarPlugin() {
 
 
   const { toast } = useToast();
+
+  const openLinkDialog = useCallback(() => {
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      let urlToEdit = 'https://';
+      let editing = false;
+      if ($isRangeSelection(selection)) {
+        const node = getSelectedNode(selection);
+        const parentLink = $findMatchingParent(node, (n) => $isLinkNode(n) || $isAutoLinkNode(n));
+        if (parentLink && ($isLinkNode(parentLink) || $isAutoLinkNode(parentLink))) {
+          urlToEdit = parentLink.getURL();
+          editing = true;
+        } else if (($isLinkNode(node) || $isAutoLinkNode(node))) {
+          urlToEdit = node.getURL();
+          editing = true;
+        }
+      }
+      setLinkDialogUrl(urlToEdit);
+      setIsEditingLink(editing);
+    });
+    setIsLinkDialogOpen(true);
+  }, [editor]);
 
 
   const updateToolbar = useCallback(() => {
@@ -274,8 +311,8 @@ export default function ToolbarPlugin() {
       setIsHighlight(selection.hasFormat('highlight'));
 
       const node = getSelectedNode(selection);
-      const parentLink = $findMatchingParent(node, $isLinkNode);
-      setIsLink(!!parentLink || $isLinkNode(node));
+      const parentLink = $findMatchingParent(node, (n) => $isLinkNode(n) || $isAutoLinkNode(n));
+      setIsLink(!!parentLink || $isLinkNode(node) || $isAutoLinkNode(node));
       
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
@@ -349,9 +386,13 @@ export default function ToolbarPlugin() {
         },
         LowPriority,
       ),
-      editor.registerCommand(
+      editor.registerCommand<InsertImagePayload>(
         INSERT_IMAGE_COMMAND,
         (payload) => {
+          if (payload.showModal) {
+            setIsInsertImageDialogOpen(true);
+            return true;
+          }
           editor.update(() => {
             const { altText, src, width, height } = payload;
             const imageNode = $createImageNode({ altText, src, width, height });
@@ -370,25 +411,15 @@ export default function ToolbarPlugin() {
         COMMAND_PRIORITY_LOW,
       ),
       editor.registerCommand(OPEN_LINK_DIALOG_COMMAND, () => {
-        editor.getEditorState().read(() => {
-          const selection = $getSelection();
-          let urlToEdit = 'https://';
-          if ($isRangeSelection(selection)) {
-              const node = getSelectedNode(selection);
-              const parentLink = $findMatchingParent(node, $isLinkNode) || $findMatchingParent(node.getParentOrThrow(), $isLinkNode);
-              if (parentLink && $isLinkNode(parentLink)) {
-                  urlToEdit = parentLink.getURL();
-              } else if ($isLinkNode(node)) {
-                  urlToEdit = node.getURL();
-              }
-          }
-          setLinkDialogUrl(urlToEdit); 
-        });
-        setIsLinkDialogOpen(true);
+        openLinkDialog();
+        return true;
+      }, LowPriority),
+      editor.registerCommand(INSERT_TABLE_DIALOG_COMMAND, () => {
+        setIsInsertTableDialogOpen(true);
         return true;
       }, LowPriority)
     );
-  }, [editor, updateToolbar]);
+  }, [editor, updateToolbar, openLinkDialog]);
 
 
 const handleLinkDialogSubmit = useCallback(() => {
@@ -396,13 +427,14 @@ const handleLinkDialogSubmit = useCallback(() => {
          editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
     } else {
         let prefixedUrl = linkDialogUrl;
-        if (!/^(https?:\/\/|mailto:|tel:)/i.test(prefixedUrl)) {
+        if (!/^(https?:\/\/|mailto:|tel:|data:)/i.test(prefixedUrl)) { // Allow data URI
             prefixedUrl = `https://${prefixedUrl}`;
         }
         editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
     }
     setIsLinkDialogOpen(false);
     setLinkDialogUrl('');
+    setIsEditingLink(false);
 }, [editor, linkDialogUrl]);
 
 
@@ -576,13 +608,40 @@ const handleLinkDialogSubmit = useCallback(() => {
     setTableColumns('3');
   };
 
+  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        setImageFile(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setImageUrl(e.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+    } else {
+        setImageFile(null);
+        // Optionally clear imageUrl if no file is selected, or keep previous URL
+        // setImageUrl(''); 
+    }
+  };
+
   const handleInsertImage = () => {
-    const src = imageUrl.trim() || `https://placehold.co/400x300.png`;
+    let srcToInsert = imageUrl.trim();
+    if (!srcToInsert && !imageFile) { // If both URL and file are empty, use placeholder
+        srcToInsert = 'https://placehold.co/400x300.png';
+    } else if (!srcToInsert && imageFile) { // If URL is empty but file is present, imageUrl state should have dataURI
+        // imageUrl is already set by handleImageFileChange
+    }
+    // If srcToInsert is still empty here, it means imageFile was null and imageUrl was also cleared or empty.
+    // This case should be handled by the placeholder logic above.
+    
     const alt = imageAltText.trim() || 'Placeholder image';
-    editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src, altText: alt, width: 400, height: 300});
+    editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src: srcToInsert, altText: alt, width: 400, height: 300});
     setIsInsertImageDialogOpen(false);
     setImageUrl('');
     setImageAltText('');
+    setImageFile(null);
+    const fileInput = document.getElementById('image-file-input') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
   };
 
   const handleGenerateText = async () => {
@@ -700,81 +759,53 @@ const handleLinkDialogSubmit = useCallback(() => {
         </SelectContent>
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
-      
-      {/* Consolidated Text Formatting Dropdown */}
+
+      <Button variant="ghost" size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} aria-pressed={isUnderline} title="Underline (Ctrl+U)">
+        <Underline className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} aria-pressed={isCode} title="Inline Code">
+        <CodeIcon className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined)} aria-pressed={isLink} title="Insert/Edit Link (Ctrl+K)">
+        <Link2 className="h-4 w-4" />
+      </Button>
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Text Formatting">
-            <Baseline className="h-5 w-5" />
+          <Button variant="ghost" size="icon" title="Text Color">
+            <Palette className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-60" align="start">
-          <DropdownMenuCheckboxItem checked={isBold} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}>
-            <Bold className="mr-2 h-4 w-4" /> Bold <DropdownMenuShortcut>Ctrl+B</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isItalic} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}>
-            <Italic className="mr-2 h-4 w-4" /> Italic <DropdownMenuShortcut>Ctrl+I</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isUnderline} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}>
-            <Underline className="mr-2 h-4 w-4" /> Underline <DropdownMenuShortcut>Ctrl+U</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
-            <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
-            <Subscript className="mr-2 h-4 w-4" /> Subscript <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isSuperscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')}>
-            <Superscript className="mr-2 h-4 w-4" /> Superscript <DropdownMenuShortcut>Ctrl+.</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isCode} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}>
-            <CodeIcon className="mr-2 h-4 w-4" /> Inline Code
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
-            <Highlighter className="mr-2 h-4 w-4" /> Highlight Text (Default)
-          </DropdownMenuCheckboxItem>
-          
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined)}>
-            <Link2 className="mr-2 h-4 w-4" /> Insert/Edit Link <DropdownMenuShortcut>Ctrl+K</DropdownMenuShortcut>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Palette className="mr-2 h-4 w-4" /> Text Color
-            </DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent className="w-52 p-2">
-                <div className="grid grid-cols-8 gap-1">
-                  {COLOR_PALETTE.map(color => (
-                    <Button
-                      key={color.name + '-text'}
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6 rounded-full border-2 p-0"
-                      style={{
-                        backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value,
-                        borderColor: currentTextColor === color.value ? 'hsl(var(--ring))' : 'hsl(var(--border))'
-                      }}
-                      onClick={() => onTextColorSelect(color.value)}
-                      title={color.name}
-                    >
-                      {color.value === 'inherit' && <Eraser className="h-3 w-3 opacity-50"/>}
-                    </Button>
-                  ))}
-                </div>
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
+        <DropdownMenuContent className="w-56 p-2">
+            <div className="grid grid-cols-8 gap-1">
+                {COLOR_PALETTE.map(color => (
+                <Button
+                    key={color.name + '-text'}
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6 rounded-full border-2 p-0"
+                    style={{
+                    backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value,
+                    borderColor: currentTextColor === color.value ? 'hsl(var(--ring))' : 'hsl(var(--border))'
+                    }}
+                    onClick={() => onTextColorSelect(color.value)}
+                    title={color.name}
+                >
+                    {color.value === 'inherit' && <Eraser className="h-3 w-3 opacity-50"/>}
+                </Button>
+                ))}
+            </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Highlighter className="mr-2 h-4 w-4" /> Highlight Color
-            </DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent className="w-52 p-2">
-                <div className="grid grid-cols-8 gap-1">
+       <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Highlight Color">
+            <Highlighter className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56 p-2">
+             <div className="grid grid-cols-8 gap-1">
                   <Button
                       key={'no-highlight'}
                       variant="outline"
@@ -801,20 +832,44 @@ const handleLinkDialogSubmit = useCallback(() => {
                       />
                   ))}
                 </div>
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
+      {/* "Aa" Dropdown for More Formatting Options */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="More text formatting">
+            <CaseSensitive className="h-5 w-5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-60" align="start">
+          <DropdownMenuCheckboxItem checked={isBold} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}>
+            <Bold className="mr-2 h-4 w-4" /> Bold <DropdownMenuShortcut>Ctrl+B</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isItalic} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}>
+            <Italic className="mr-2 h-4 w-4" /> Italic <DropdownMenuShortcut>Ctrl+I</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
+            <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
+            <Subscript className="mr-2 h-4 w-4" /> Subscript <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isSuperscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')}>
+            <Superscript className="mr-2 h-4 w-4" /> Superscript <DropdownMenuShortcut>Ctrl+.</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
+            <Highlighter className="mr-2 h-4 w-4" /> Highlight Text
+          </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-           <DropdownMenuSub>
+          <DropdownMenuSub>
             <DropdownMenuSubTrigger>
-                <CaseSensitive className="mr-2 h-4 w-4" /> Change Case
+              <CaseSensitive className="mr-2 h-4 w-4" /> Change Case
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
                 <DropdownMenuSubContent>
                     <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'lowercase')}>
                         <CaseLower className="mr-2 h-4 w-4" /> lowercase
-                         {/* No shortcut for lowercase to avoid conflict with Align Left */}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'uppercase')}>
                         <CaseUpper className="mr-2 h-4 w-4" /> UPPERCASE
@@ -833,8 +888,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DropdownMenuContent>
       </DropdownMenu>
       
-      <Separator orientation="vertical" className="h-6 mx-1" />
-      
       <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" title="Generate Text with AI">
@@ -844,9 +897,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Generate Text with AI</DialogTitle>
-            <DialogDescription>
-              Enter a prompt and let AI generate text for you.
-            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <Label htmlFor="ai-prompt">Prompt</Label>
@@ -867,82 +917,38 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DialogContent>
       </Dialog>
       
-      <Dialog open={isInsertTableDialogOpen || isInsertImageDialogOpen} onOpenChange={(open) => {
-          if (!open) {
-              setIsInsertTableDialogOpen(false);
-              setIsInsertImageDialogOpen(false);
-          }
-      }}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="px-2 h-9 text-sm sm:text-base justify-start min-w-[90px] sm:min-w-[100px]" title="Insert">
-              <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
-              <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
-            </DropdownMenuItem>
-            <DialogTrigger asChild>
-              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertTableDialogOpen(true); }}>
-                  <TableIcon className="mr-2 h-4 w-4" /> Table
-              </DropdownMenuItem>
-            </DialogTrigger>
-            <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsInsertImageDialogOpen(true); }}>
-                  <ImageIcon className="mr-2 h-4 w-4" /> Image
-              </DropdownMenuItem>
-            </DialogTrigger>
-            <DropdownMenuItem
-              onClick={() => {
-                editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
-              }}
-            >
-              <Calculator className="mr-2 h-4 w-4" /> Equation
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {isInsertTableDialogOpen && (
-          <DialogContent className="sm:max-w-xs">
-            <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
-                <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
-                <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsInsertTableDialogOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={handleInsertTable}>Insert</Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-
-        {isInsertImageDialogOpen && (
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
-                <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
-                <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsInsertImageDialogOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={handleInsertImage}>Insert</Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="px-2 h-9 text-sm sm:text-base justify-start min-w-[90px] sm:min-w-[100px]" title="Insert">
+            <PlusSquare className="mr-2 h-4 w-4 shrink-0" /> Insert <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}>
+            <Minus className="mr-2 h-4 w-4" /> Horizontal Rule
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => editor.dispatchCommand(INSERT_TABLE_DIALOG_COMMAND, undefined) }>
+            <TableIcon className="mr-2 h-4 w-4" /> Table
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => editor.dispatchCommand(INSERT_IMAGE_COMMAND, { showModal: true, src: '', altText: '' }) }>
+            <ImageIconLucide className="mr-2 h-4 w-4" /> Image
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
+            }}
+          >
+            <Calculator className="mr-2 h-4 w-4" /> Equation
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined);
+            }}
+          >
+            <ChevronsUpDown className="mr-2 h-4 w-4" /> Collapsible
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       <DropdownMenu>
@@ -951,7 +957,7 @@ const handleLinkDialogSubmit = useCallback(() => {
             <currentAlignmentOption.icon className="mr-2 h-4 w-4 shrink-0" /> <span className="truncate w-[50px] sm:w-[70px]">{currentAlignmentOption.label}</span> <ChevronDown className="ml-auto h-4 w-4 opacity-50"/>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56">
+        <DropdownMenuContent className="w-60">
           {ALIGNMENT_OPTIONS.filter(opt => ['left', 'center', 'right', 'justify'].includes(opt.value)).map(opt => ( 
             <DropdownMenuItem
               key={opt.value}
@@ -960,12 +966,7 @@ const handleLinkDialogSubmit = useCallback(() => {
             >
               <opt.icon className="mr-2 h-4 w-4" /> 
               <span className="flex-grow">{opt.label}</span>
-               <DropdownMenuShortcut>{
-                  opt.value === 'left' ? 'Ctrl+Shift+L' :
-                  opt.value === 'center' ? 'Ctrl+Shift+E' :
-                  opt.value === 'right' ? 'Ctrl+Shift+R' :
-                  opt.value === 'justify' ? 'Ctrl+Shift+J' : ''
-              }</DropdownMenuShortcut>
+              {opt.shortcut && <DropdownMenuShortcut>{opt.shortcut}</DropdownMenuShortcut>}
             </DropdownMenuItem>
           ))}
            <DropdownMenuItem
@@ -994,17 +995,14 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Link Dialog (managed by isLinkDialogOpen) */}
+      {/* Link Dialog */}
       <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{isLink ? "Edit Link" : "Insert Link"}</DialogTitle>
-                <DialogDescription>
-                    {isLink ? "Update the URL for the link." : "Enter the URL you want to link to."}
-                </DialogDescription>
+                <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-                <Label htmlFor="link-url" className="sr-only">URL</Label>
+                <Label htmlFor="link-url">URL</Label>
                 <Input 
                     id="link-url" 
                     value={linkDialogUrl} 
@@ -1014,11 +1012,63 @@ const handleLinkDialogSubmit = useCallback(() => {
                 />
             </div>
             <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsLinkDialogOpen(false); setLinkDialogUrl('');}}>Cancel</Button>
-                <Button type="button" onClick={handleLinkDialogSubmit}>Apply</Button>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleLinkDialogSubmit}>{isEditingLink ? "Update" : "Insert"}</Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>
+
+       {/* Insert Table Dialog */}
+      <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
+        <DialogContent className="sm:max-w-xs">
+            <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="table-rows" className="text-right col-span-1">Rows</Label>
+                <Input id="table-rows" type="number" value={tableRows} onChange={(e) => setTableRows(e.target.value)} className="col-span-3" min="1" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="table-columns" className="text-right col-span-1">Columns</Label>
+                <Input id="table-columns" type="number" value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} className="col-span-3" min="1" />
+              </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleInsertTable}>Insert</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Insert Image Dialog */}
+      <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="image-url" className="text-right col-span-1">URL</Label>
+                    <Input id="image-url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" placeholder="https://placehold.co/400x300.png" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label className="text-right col-span-1">Or</Label>
+                    <div className="col-span-3"/>
+                </div>
+                 <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="image-file-input" className="text-right col-span-1">Upload</Label>
+                    <Input id="image-file-input" type="file" onChange={handleImageFileChange} className="col-span-3" accept="image/*" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="image-alt" className="text-right col-span-1">Alt Text</Label>
+                    <Input id="image-alt" value={imageAltText} onChange={(e) => setImageAltText(e.target.value)} className="col-span-3" placeholder="Descriptive text" />
+                </div>
+            </div>
+            <DialogFooter>
+                 <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                <Button type="button" onClick={handleInsertImage}>Insert</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
+

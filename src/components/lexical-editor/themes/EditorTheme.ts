@@ -26,7 +26,7 @@ const theme: EditorThemeClasses = {
     listitemChecked: 'editor-listitem-checked', 
     listitemUnchecked: 'editor-listitem-unchecked', 
   },
-  image: 'editor-image my-2 block', 
+  image: 'editor-image', // Main wrapper class for image and caption
   link: 'editor-link',
   text: {
     bold: 'editor-text-bold',
@@ -36,8 +36,8 @@ const theme: EditorThemeClasses = {
     underlineStrikethrough: 'editor-text-underlineStrikethrough',
     code: 'editor-text-code', 
     highlight: 'editor-text-highlight',
-    subscript: 'align-sub text-xs', // Basic styling for subscript
-    superscript: 'align-super text-xs', // Basic styling for superscript
+    subscript: 'align-sub text-xs', 
+    superscript: 'align-super text-xs', 
   },
   code: 'editor-code-block', 
   codeHighlight: {
@@ -77,7 +77,10 @@ const theme: EditorThemeClasses = {
   tableRow: 'Lexical__tableRow', 
   horizontalRule: 'Lexical__horizontalRule', 
   equation: 'editor-equation', 
-  equationInline: 'editor-equation-inline', 
+  equationInline: 'editor-equation-inline',
+  collapsibleContainer: 'editor-collapsible-container',
+  collapsibleContent: 'editor-collapsible-content',
+  collapsibleTitle: 'editor-collapsible-title',
 };
 
 export default theme;

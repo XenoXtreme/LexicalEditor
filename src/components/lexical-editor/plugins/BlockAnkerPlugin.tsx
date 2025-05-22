@@ -32,6 +32,7 @@ import {
   ImageIcon,
   TableIcon,
   Calculator,
+  ChevronsUpDown,
 } from 'lucide-react';
 import {
   INSERT_ORDERED_LIST_COMMAND,
@@ -41,9 +42,10 @@ import {
 import { $createHeadingNode, $isHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $createCodeNode } from '@lexical/code';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
-import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { INSERT_IMAGE_COMMAND } from './ToolbarPlugin';
+// import { INSERT_TABLE_COMMAND } from '@lexical/table'; // Use custom dialog command
+import { INSERT_IMAGE_COMMAND, INSERT_TABLE_DIALOG_COMMAND } from './ToolbarPlugin';
 import { INSERT_EQUATION_COMMAND } from './EquationPlugin';
+import { INSERT_COLLAPSIBLE_COMMAND } from '../plugins/Collapsible';
 import { $setBlocksType } from '@lexical/selection';
 
 
@@ -59,14 +61,14 @@ const AnkerButton = React.forwardRef<HTMLButtonElement, AnkerButtonProps>(
         variant="ghost"
         size="icon"
         onMouseDown={(e) => {
-          e.preventDefault();
-          if (props.onMouseDown) {
+          e.preventDefault(); // Prevent editor blur before menu item click
+          if (props.onMouseDown) { // Chain to PopoverTrigger's internal onMouseDown
             props.onMouseDown(e);
           }
         }}
         aria-label="Insert block"
         title="Insert block"
-        {...props}
+        {...props} // Spread PopoverTrigger's props (like onClick for opening)
       >
         <Plus className="h-5 w-5" />
       </Button>
@@ -165,6 +167,7 @@ const getBlockMenuItems = (editor: LexicalEditor): BlockMenuItem[] => [
        editor.update(() => {
         const selection = $getSelection();
         if ($isRangeSelection(selection)) {
+          // ToolbarPlugin handles default language if not specified
           $setBlocksType(selection, () => $createCodeNode());
         }
       });
@@ -179,16 +182,16 @@ const getBlockMenuItems = (editor: LexicalEditor): BlockMenuItem[] => [
     label: 'Image',
     icon: ImageIcon,
     action: () => {
-      const src = 'https://placehold.co/600x400.png';
-      const altText = 'placeholder image';
-      editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src, altText, width: 400, height: 300 });
+      // Dispatch command to open the dialog from ToolbarPlugin
+      editor.dispatchCommand(INSERT_IMAGE_COMMAND, { src: '', altText: '', showModal: true });
     },
   },
   {
     label: 'Table',
     icon: TableIcon,
     action: () => {
-      editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3' });
+      // Dispatch command to open the dialog from ToolbarPlugin
+      editor.dispatchCommand(INSERT_TABLE_DIALOG_COMMAND, undefined);
     },
   },
   {
@@ -198,12 +201,19 @@ const getBlockMenuItems = (editor: LexicalEditor): BlockMenuItem[] => [
       editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
     },
   },
+  {
+    label: 'Collapsible',
+    icon: ChevronsUpDown,
+    action: () => {
+      editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined);
+    }
+  }
 ];
 
 export default function BlockAnkerPlugin() {
   const [editor] = useLexicalComposerContext();
   const ankerRef = useRef<HTMLDivElement>(null);
-  const popoverContentRef = useRef<HTMLDivElement>(null); // Ref for PopoverContent
+  const popoverContentRef = useRef<HTMLDivElement>(null);
   const [showAnker, setShowAnker] = useState(false);
   const [ankerPosition, setAnkerPosition] = useState<{ top: number; left: number } | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -221,7 +231,7 @@ export default function BlockAnkerPlugin() {
       const element = anchorNode.getTopLevelElement();
 
       if (element && $isElementNode(element) && (element.isEmpty() || (element.getChildrenSize() === 1 && $isLineBreakNode(element.getFirstChild())))) {
-         if ($isRootNode(element)) return;
+         if ($isRootNode(element)) return; // Don't show for root itself
 
         const domElement = editor.getElementByKey(element.getKey());
         if (domElement) {
@@ -231,7 +241,7 @@ export default function BlockAnkerPlugin() {
           if (editorRootRect) {
              setAnkerPosition({
                 top: rect.top - editorRootRect.top + window.scrollY,
-                left: rect.left - editorRootRect.left - 30 + window.scrollX,
+                left: rect.left - editorRootRect.left - 30 + window.scrollX, // Adjust left position for "+"
              });
              setShowAnker(true);
              if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -263,39 +273,34 @@ export default function BlockAnkerPlugin() {
   }, [editor, updateAnkerPosition]);
 
   useEffect(() => {
-    const handleScrollEvent = (event: Event) => { // Specifically for scroll
+    const handleScrollOrResize = (event?: Event) => {
       if (isMenuOpen) {
-        updateAnkerPosition();
-        const target = event.target as Node;
-        if (popoverContentRef.current && popoverContentRef.current.contains(target)) {
-          // Scroll is within the popover content, don't close
-          return;
+        if (event && event.type === 'scroll') {
+          const target = event.target as Node;
+          // Check if scroll is within the popover content
+          if (popoverContentRef.current && popoverContentRef.current.contains(target)) {
+            return; // Don't close if scrolling inside popover
+          }
         }
-        setIsMenuOpen(false); // Close if scroll is outside popover
+        // Close if resize event or scroll outside popover
+        setIsMenuOpen(false);
+        updateAnkerPosition(); // Recalculate anker visibility/position after closing
       } else if (showAnker) {
-        updateAnkerPosition(); // Keep anker updated if visible
+        updateAnkerPosition(); // Keep anker updated if visible and menu is not open
       }
     };
-
-    const handleResizeEvent = () => { // Specifically for resize
-      if (showAnker || isMenuOpen) {
-        updateAnkerPosition();
-        if (isMenuOpen) {
-          setIsMenuOpen(false); // Always close on resize to avoid misplacement
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScrollEvent, true);
-    window.addEventListener('resize', handleResizeEvent, true);
+  
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize, true);
+  
     return () => {
-      window.removeEventListener('scroll', handleScrollEvent, true);
-      window.removeEventListener('resize', handleResizeEvent, true);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize, true);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
       }
     };
-  }, [editor, showAnker, updateAnkerPosition, isMenuOpen]);
+  }, [editor, showAnker, isMenuOpen, updateAnkerPosition]);
 
 
   const shouldRenderPopover = showAnker || isMenuOpen;
@@ -319,12 +324,12 @@ export default function BlockAnkerPlugin() {
           />
         </PopoverTrigger>
         <PopoverContent
-            ref={popoverContentRef} // Attach the ref here
+            ref={popoverContentRef}
             className="w-full sm:w-60 p-1"
             side="right"
             align="start"
             sideOffset={5}
-            onCloseAutoFocus={(e) => e.preventDefault()}
+            onCloseAutoFocus={(e) => e.preventDefault()} // Prevent focus issues after closing
         >
           <div className="flex flex-col max-h-[300px] overflow-y-auto">
             <p className="p-2 text-xs font-semibold text-muted-foreground">INSERT BLOCKS</p>
@@ -333,10 +338,10 @@ export default function BlockAnkerPlugin() {
                 key={item.label}
                 variant="ghost"
                 className="w-full justify-start h-8 px-2 text-sm"
-                onMouseDown={(e) => {
+                onMouseDown={(e) => { // Use onMouseDown to apply action before popover closes
                     e.preventDefault();
                     item.action(editor);
-                    setIsMenuOpen(false);
+                    setIsMenuOpen(false); // Close menu after action
                 }}
               >
                 <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />

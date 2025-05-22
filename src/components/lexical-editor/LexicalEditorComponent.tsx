@@ -19,15 +19,17 @@ import { $findMatchingParent } from '@lexical/utils';
 import EditorTheme from './themes/EditorTheme';
 import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
-import ToolbarPlugin, { OPEN_LINK_DIALOG_COMMAND, CUSTOM_CLEAR_FORMATTING_COMMAND, CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, type TextCaseType } from './plugins/ToolbarPlugin';
+import ToolbarPlugin, { OPEN_LINK_DIALOG_COMMAND, CUSTOM_CLEAR_FORMATTING_COMMAND, CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, type TextCaseType, INSERT_IMAGE_COMMAND, INSERT_TABLE_DIALOG_COMMAND } from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
 import { Toaster } from "@/components/ui/toaster";
 import { Separator } from '@/components/ui/separator';
 
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
-import EquationPlugin from './plugins/EquationPlugin';
+import EquationPlugin, { INSERT_EQUATION_COMMAND } from './plugins/EquationPlugin';
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
+import CollapsiblePlugin from './plugins/Collapsible';
+
 
 import {
   $getSelection,
@@ -40,7 +42,7 @@ import {
   OUTDENT_CONTENT_COMMAND,
   $createParagraphNode,
   $isRootOrShadowRoot,
-  $isTextNode, 
+  // $isTextNode, // Not directly used here anymore
 } from 'lexical';
 
 import { $isListNode, ListNode } from '@lexical/list';
@@ -168,17 +170,18 @@ function EditorLogicHandler() {
           const selection = $getSelection();
           if ($isRangeSelection(selection)) {
             // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues
-            console.warn("Lexical's $clearFormatting utility is currently unavailable due to a build issue. Performing a limited manual format clearing. Please check project setup for @lexical/selection module resolution.");
+            console.warn("Lexical's $clearFormatting utility is currently affected by an import issue. Performing a limited manual format clearing.");
 
             LexicalSelectionUtil.$patchStyleText(selection, {
-                'font-family': `var(--font-roboto), sans-serif`, 
-                'font-size': '16px',             
-                'color': 'inherit',                
-                'background-color': 'transparent', 
-                'font-weight': '',                 
-                'font-style': '',                  
-                'text-decoration': '',             
+              'font-family': `var(--font-roboto), sans-serif`,
+              'font-size': '16px',
+              'color': 'inherit',
+              'background-color': 'transparent',
+              'font-weight': '',
+              'font-style': '',
+              'text-decoration': '',
             });
+            // Toggle off formats
             if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
             if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
             if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
@@ -190,12 +193,12 @@ function EditorLogicHandler() {
 
             const anchorNode = selection.anchor.getNode();
             const element = $findMatchingParent(anchorNode, (e) => {
-                const parent = e.getParent();
-                return parent !== null && $isRootOrShadowRoot(parent);
+              const parent = e.getParent();
+              return parent !== null && $isRootOrShadowRoot(parent);
             }) || anchorNode.getTopLevelElementOrThrow();
 
             if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
-                 LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
+              LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
             }
           }
         });
@@ -240,12 +243,12 @@ export default function LexicalEditorComponent(): JSX.Element {
       console.error("Lexical editor error:", error);
     },
   };
-  
+
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className="relative bg-card p-0.5 rounded-lg shadow-lg border border-input">
         <ToolbarPlugin />
-        <Separator orientation="horizontal"/>
+        <Separator orientation="horizontal" />
         <div className="editor-inner relative mt-0 p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded-b-md">
           <RichTextPlugin
             contentEditable={<ContentEditable className="outline-none resize-none h-full text-base" />}
@@ -260,6 +263,7 @@ export default function LexicalEditorComponent(): JSX.Element {
           <HorizontalRulePlugin />
           <TablePlugin />
           <EquationPlugin />
+          <CollapsiblePlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
           <EditorLogicHandler /> {/* Add the logic handler here */}

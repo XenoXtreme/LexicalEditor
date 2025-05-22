@@ -194,7 +194,6 @@ body {
   .editor-code-block .token_operator,
   .editor-code-block .token_entity,
   .editor-code-block .token_url {
-    /* .language-css .token.string and .style .token.string are very specific, handle if needed */
     @apply text-cyan-600 dark:text-[#56b6c2];
   }
   .editor-code-block .token_atrule,
@@ -231,7 +230,6 @@ body {
   .editor-listitem-checked::before {
     content: '';
     @apply absolute left-0 top-[0.2em] w-4 h-4 border-2 border-primary rounded-sm ;
-    /* Ensure the pseudo-element doesn't inherit paragraph styles that might hide it */
     display: block; 
   }
 
@@ -241,7 +239,7 @@ body {
   .editor-listitem-checked::after { /* Checkmark */
     content: '';
     @apply absolute left-[3px] top-[0.25em] w-2.5 h-1.5 border-l-2 border-b-2 border-primary-foreground transform rotate-[-45deg];
-    display: block; /* Ensure visibility */
+    display: block;
   }
   .editor-listitem-checked > .editor-paragraph { /* Style text when checked */
      @apply line-through text-muted-foreground;
@@ -250,20 +248,20 @@ body {
 
   /* Image Node Styles */
   .editor-image {
-    @apply my-2 inline-block; /* Changed from block to inline-block to allow caption to flow correctly */
+    @apply my-2 inline-block; 
   }
   .editor-image img {
-    @apply max-w-full h-auto block; /* Image itself is block to maintain aspect ratio */
+    @apply max-w-full h-auto block; 
   }
   /* Caption specific styling */
   .editor-image-caption-paragraph {
     @apply text-sm text-muted-foreground text-center mt-1 mb-0;
   }
   .image-caption-editor-wrapper .editor-placeholder {
-    @apply text-sm text-center top-1/2 -translate-y-1/2 left-0 right-0; /* Centered placeholder */
+    @apply text-sm text-center top-1/2 -translate-y-1/2 left-0 right-0; 
   }
   .caption-content-editable {
-    @apply p-1; /* Minimal padding for caption input area */
+    @apply p-1; 
   }
 
 
@@ -288,17 +286,37 @@ body {
 
   /* Equation Node Styles */
   .editor-equation {
-    @apply cursor-pointer p-1 my-1 text-lg text-foreground; /* General styling for equation wrappers */
-    /* KaTeX font styling is handled by katex.min.css */
+    @apply cursor-pointer p-1 my-1 text-lg text-foreground;
   }
   .editor-equation-inline {
-    @apply inline-block align-middle; /* For inline equations */
+    @apply inline-block align-middle;
   }
-  .editor-equation .katex-display { /* Block equations */
-    @apply my-2 mx-auto; /* Center block equations */
+  .editor-equation .katex-display { 
+    @apply my-2 mx-auto; 
   }
   .editor-equation .katex {
-    @apply text-base; /* Adjust base font size for KaTeX if needed */
+    @apply text-base;
   }
-}
 
+  /* Collapsible Container Styles */
+  .editor-collapsible-container {
+    @apply my-2 border border-border rounded;
+  }
+  .editor-collapsible-title {
+    @apply flex justify-between items-center p-2 bg-muted/50 cursor-pointer hover:bg-muted/70;
+  }
+  .editor-collapsible-title summary { /* Target summary if it exists, or style title directly */
+    @apply list-none; /* Remove default disclosure triangle if summary is used */
+  }
+  .editor-collapsible-title::after { /* Custom disclosure triangle */
+    content: '▼';
+    @apply text-xs transform transition-transform;
+  }
+  .editor-collapsible-container[data-open='true'] .editor-collapsible-title::after {
+    transform: rotate(-180deg);
+  }
+  .editor-collapsible-content {
+    @apply p-2 border-t border-border;
+  }
+
+}
