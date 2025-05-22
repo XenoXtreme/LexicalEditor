@@ -19,8 +19,8 @@ import {
   ElementFormatType,
   $getRoot,
   $createTextNode,
-  $isTextNode, // Added back
-  createCommand, // Ensured import
+  $isTextNode,
+  createCommand,
   INDENT_CONTENT_COMMAND,
   OUTDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
@@ -36,8 +36,8 @@ import { $createHeadingNode, $isHeadingNode, $createQuoteNode, $isQuoteNode as i
 
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { $createImageNode, ImagePayload } from '../nodes/ImageNode.tsx'; // Corrected import path
-import { INSERT_EQUATION_COMMAND } from '../plugins/EquationPlugin';
+import { $createImageNode, type ImagePayload } from '../nodes/ImageNode.tsx';
+import { INSERT_EQUATION_COMMAND, type InsertEquationPayload } from '../plugins/EquationPlugin';
 
 
 import {
@@ -73,7 +73,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogClose,
-  DialogTrigger, // Added DialogTrigger import
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,7 +81,7 @@ import { useToast } from '@/hooks/use-toast';
 import { generateText, type GenerateTextInput } from '@/ai/flows/generate-text-flow';
 
 // Custom Commands
-export const OPEN_LINK_DIALOG_COMMAND = createCommand<void>('OPEN_LINK_DIALOG_COMMAND');
+export const OPEN_LINK_DIALOG_COMMAND = createCommand<string | null>('OPEN_LINK_DIALOG_COMMAND');
 export const CUSTOM_CLEAR_FORMATTING_COMMAND = createCommand<void>('CUSTOM_CLEAR_FORMATTING_COMMAND');
 export type TextCaseType = 'uppercase' | 'lowercase' | 'capitalize';
 export const CUSTOM_TRANSFORM_TEXT_CASE_COMMAND = createCommand<TextCaseType>('CUSTOM_TRANSFORM_TEXT_CASE_COMMAND');
@@ -227,7 +227,7 @@ export default function ToolbarPlugin() {
   const [isSubscript, setIsSubscript] = useState(false);
   const [isSuperscript, setIsSuperscript] = useState(false);
   const [isCode, setIsCode] = useState(false);
-  const [isHighlight, setIsHighlight] = useState(false); // For default highlight
+  const [isHighlight, setIsHighlight] = useState(false); 
   const [elementFormat, setElementFormat] = useState<ElementFormatType>('left');
 
   const [currentFontSize, setCurrentFontSize] = useState<string>('16px');
@@ -245,7 +245,7 @@ export default function ToolbarPlugin() {
 
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('https://');
-  const [linkDialogText, setLinkDialogText] = useState('');
+  const [linkDialogText, setLinkDialogText] = useState(''); // New state for link text
   const [isEditingLink, setIsEditingLink] = useState(false);
 
 
@@ -268,7 +268,7 @@ export default function ToolbarPlugin() {
           urlToEdit = parentLink.getURL();
           textToEdit = parentLink.getTextContent();
           editing = true;
-        } else if (($isLinkNode(node) || $isAutoLinkNode(node))) {
+        } else if (($isLinkNode(node) || $isAutoLinkNode(node))) { // Check if the selected node itself is a link
           urlToEdit = node.getURL();
           textToEdit = node.getTextContent();
           editing = true;
@@ -277,7 +277,7 @@ export default function ToolbarPlugin() {
         }
       }
       setLinkDialogUrl(urlToEdit);
-      setLinkDialogText(textToEdit);
+      setLinkDialogText(textToEdit); // Set the link text state
       setIsEditingLink(editing);
     });
     setIsLinkDialogOpen(true);
@@ -305,40 +305,37 @@ export default function ToolbarPlugin() {
 
       // Block type and code language states
       const currentSelectedNode = getSelectedNode(selection);
-      let effectiveBlockNode: ElementNode | null = null;
-
-      if ($isElementNode(currentSelectedNode)) {
-        effectiveBlockNode = currentSelectedNode as ElementNode;
-      } else {
-        effectiveBlockNode = currentSelectedNode.getParentOrThrow() as ElementNode;
-      }
+      const anchorNode = selection.anchor.getNode();
+      const element = $isRootOrShadowRoot(anchorNode)
+        ? anchorNode
+        : $findMatchingParent(anchorNode, (e) => {
+            const parent = e.getParent();
+            return parent !== null && $isRootOrShadowRoot(parent);
+          }) || anchorNode.getTopLevelElementOrThrow();
       
-      const parentList = $getNearestNodeOfType(currentSelectedNode, ListNode);
+      const elementKey = element.getKey();
+      const elementDOM = editor.getElementByKey(elementKey);
 
-      if (parentList) {
-          setBlockType(parentList.getListType());
-          setSelectedElementKey(null); 
-      } else if (effectiveBlockNode && !$isRootOrShadowRoot(effectiveBlockNode)) {
-        const type = $isHeadingNode(effectiveBlockNode)
-          ? effectiveBlockNode.getTag()
-          : ($isCodeNode(effectiveBlockNode) ? 'code' : (isQuoteNodeLexical(effectiveBlockNode) ? 'quote' : effectiveBlockNode.getType()));
-        
-        if (supportedBlockTypes.has(type)) {
+      if (elementDOM !== null) {
+        setSelectedElementKey(elementKey);
+        if ($isListNode(element)) {
+          const parentList = $getNearestNodeOfType(anchorNode, ListNode);
+          const type = parentList ? parentList.getListType() : element.getListType();
+          setBlockType(type);
+        } else {
+          const type = $isHeadingNode(element)
+            ? element.getTag()
+            : ($isCodeNode(element) ? 'code' : (isQuoteNodeLexical(element) ? 'quote' : element.getType()));
+          if (supportedBlockTypes.has(type)) {
             setBlockType(type);
-        } else {
+          } else {
             setBlockType('paragraph');
-        }
-
-        if ($isCodeNode(effectiveBlockNode)) {
-            const language = effectiveBlockNode.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
+          }
+          if ($isCodeNode(element)) {
+            const language = element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
             setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext');
-            setSelectedElementKey(effectiveBlockNode.getKey());
-        } else {
-            setSelectedElementKey(null); 
+          }
         }
-      } else {
-        setBlockType('paragraph');
-        setSelectedElementKey(null);
       }
 
 
@@ -347,17 +344,12 @@ export default function ToolbarPlugin() {
       setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `var(--font-roboto), sans-serif`));
 
       // Element alignment state
-      const anchorNode = selection.anchor.getNode();
-      let formatableElement: ElementNode | null = null;
-
-      if ($isElementNode(anchorNode) && typeof (anchorNode as ElementNode).getFormatType === 'function') {
-        formatableElement = anchorNode as ElementNode;
-      } else {
-        formatableElement = $findMatchingParent(anchorNode, (n) => $isElementNode(n) && typeof (n as ElementNode).getFormatType === 'function') as ElementNode | null;
+      let formatableNode: any = currentSelectedNode; 
+      if (typeof formatableNode.getFormatType !== 'function') { 
+          formatableNode = $findMatchingParent(currentSelectedNode, (n: any) => $isElementNode(n) && typeof n.getFormatType === 'function');
       }
-
-      if (formatableElement && !$isRootOrShadowRoot(formatableElement)) {
-        setElementFormat(formatableElement.getFormatType());
+      if (formatableNode && typeof formatableNode.getFormatType === 'function') {
+        setElementFormat(formatableNode.getFormatType());
       } else {
         const root = $getRoot();
         if (typeof root.getFormatType === 'function') {
@@ -427,7 +419,7 @@ export default function ToolbarPlugin() {
         },
         COMMAND_PRIORITY_LOW,
       ),
-      editor.registerCommand(OPEN_LINK_DIALOG_COMMAND, () => {
+      editor.registerCommand(OPEN_LINK_DIALOG_COMMAND, (payload) => {
         openLinkDialog();
         return true;
       }, LowPriority),
@@ -472,9 +464,13 @@ const handleLinkDialogSubmit = useCallback(() => {
             linkNodeToUpdate.setURL(prefixedUrl);
             if(linkDialogText && linkNodeToUpdate.getTextContent() !== linkDialogText){
                 const textNode = linkNodeToUpdate.getFirstChild();
-                if($isTextNode(textNode)){ // Check if textNode is actually a TextNode
+                if($isTextNode(textNode)){ 
                     textNode.setTextContent(linkDialogText);
                 } else {
+                    // If the first child is not a text node, or if there are no children,
+                    // remove existing children and append a new text node. This handles cases
+                    // where the link node might contain other nested nodes.
+                    linkNodeToUpdate.getChildren().forEach(child => child.remove());
                     linkNodeToUpdate.append($createTextNode(linkDialogText));
                 }
             }
@@ -486,7 +482,7 @@ const handleLinkDialogSubmit = useCallback(() => {
                 selection.insertNodes([linkNode]);
             } else if (linkDialogText.trim() && !selection.isCollapsed() && selection.getTextContent() !== linkDialogText.trim()) {
                 selection.insertText(linkDialogText.trim());
-                editor.getEditorState().read(() => { // Reread selection as insertText might change it
+                editor.getEditorState().read(() => { 
                     const newSelection = $getSelection();
                     if ($isRangeSelection(newSelection)) {
                         editor.dispatchCommand(TOGGLE_LINK_COMMAND, prefixedUrl);
@@ -731,7 +727,7 @@ const handleLinkDialogSubmit = useCallback(() => {
       toast({ variant: "destructive", title: "AI Generation Failed", description });
     } finally {
       setIsGeneratingText(false);
-      // setIsGenAIDialogOpen(false); // Keep dialog open
+      // Keep dialog open setIsGenAIDialogOpen(false);
     }
   };
 
@@ -811,120 +807,83 @@ const handleLinkDialogSubmit = useCallback(() => {
       </Select>
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* Main formatting buttons as per image */}
-      <Button variant="ghost" size="icon" aria-pressed={isBold} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} title="Bold (Ctrl+B)">
-        <Bold className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" aria-pressed={isItalic} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} title="Italic (Ctrl+I)">
-        <Italic className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" aria-pressed={isUnderline} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} title="Underline (Ctrl+U)">
-        <Underline className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" aria-pressed={isCode} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} title="Inline Code">
-        <CodeIcon className="h-4 w-4" />
-      </Button>
-      <Dialog open={isLinkDialogOpen} onOpenChange={(isOpen) => {
-          setIsLinkDialogOpen(isOpen);
-          if (!isOpen) {
-              setLinkDialogUrl('https://');
-              setLinkDialogText('');
-              setIsEditingLink(false);
-          }
-      }}>
-        <DialogTrigger asChild>
-             <Button variant="ghost" size="icon" aria-pressed={isLink} title="Insert/Edit Link (Ctrl+K)">
-                <Link2 className="h-4 w-4" />
-            </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-                <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                    <Label htmlFor="link-url-dialog">URL</Label>
-                    <Input
-                        id="link-url-dialog"
-                        value={linkDialogUrl}
-                        onChange={(e) => setLinkDialogUrl(e.target.value)}
-                        placeholder="https://example.com"
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleLinkDialogSubmit();}}}
-                    />
-                </div>
-                 <div className="grid gap-2">
-                    <Label htmlFor="link-text-dialog">Text to display (optional)</Label>
-                    <Input
-                        id="link-text-dialog"
-                        value={linkDialogText}
-                        onChange={(e) => setLinkDialogText(e.target.value)}
-                        placeholder="Link text"
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleLinkDialogSubmit();}}}
-                    />
-                </div>
-            </div>
-            <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="button" onClick={handleLinkDialogSubmit}>{isEditingLink ? "Update" : "Insert"}</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-
-      {/* Text Color Dropdown */}
+      {/* Consolidated Text Formatting Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Text Color">
-            <Palette className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-auto p-1">
-           <div className="grid grid-cols-8 gap-1 p-1 max-w-[200px]">
-                {COLOR_PALETTE.map(color => (
-                    <Button
-                      key={color.name + '-text'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0"
-                      style={{ backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value }}
-                      onClick={() => applyStyleText({ color: color.value })} title={color.name}
-                    >
-                       {color.value === 'inherit' && <Eraser className="h-3 w-3 opacity-50"/>}
-                    </Button>
-                ))}
-            </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Highlight Color Dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="Highlight Color">
-            <Highlighter className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-auto p-1">
-           <div className="grid grid-cols-8 gap-1 p-1 max-w-[200px]">
-                <Button key={'no-highlight'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0 flex items-center justify-center"
-                  onClick={() => applyStyleText({'background-color': 'transparent'})} title="None"
-                ><Eraser className="h-3 w-3 opacity-50"/></Button>
-                {COLOR_PALETTE.filter(c => c.value !== 'inherit' && c.value !== 'hsl(var(--foreground))' && c.value !== 'hsl(var(--primary))').map(color => (
-                    <Button key={color.name + '-bg'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0"
-                    style={{ backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value }}
-                    onClick={() => applyStyleText({ 'background-color': color.value })} title={color.name} />
-                ))}
-            </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* "Aa" - More Formatting Dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" title="More text formatting">
-            <CaseSensitive className="h-5 w-5" />
+          <Button variant="ghost" size="icon" title="Text Formatting">
+            <Baseline className="h-5 w-5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-60" align="start">
+          <DropdownMenuCheckboxItem checked={isBold} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}>
+            <Bold className="mr-2 h-4 w-4" /> Bold <DropdownMenuShortcut>Ctrl+B</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isItalic} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}>
+            <Italic className="mr-2 h-4 w-4" /> Italic <DropdownMenuShortcut>Ctrl+I</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isUnderline} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}>
+            <Underline className="mr-2 h-4 w-4" /> Underline <DropdownMenuShortcut>Ctrl+U</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
+            <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isCode} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')}>
+            <CodeIcon className="mr-2 h-4 w-4" /> Inline Code
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
+            <Subscript className="mr-2 h-4 w-4" /> Subscript <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={isSuperscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')}>
+            <Superscript className="mr-2 h-4 w-4" /> Superscript <DropdownMenuShortcut>Ctrl+.</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+           <DropdownMenuItem onSelect={() => editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, null)}>
+            <Link2 className="mr-2 h-4 w-4" /> Insert/Edit Link <DropdownMenuShortcut>Ctrl+K</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger><CaseSensitive className="mr-2 h-4 w-4" /> Change Case</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger><Palette className="mr-2 h-4 w-4" /> Text Color</DropdownMenuSubTrigger>
             <DropdownMenuPortal>
+              <DropdownMenuSubContent className="w-auto p-1">
+                <div className="grid grid-cols-8 gap-1 p-1 max-w-[200px]">
+                  {COLOR_PALETTE.map(color => (
+                      <Button
+                        key={color.name + '-text'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0"
+                        style={{ backgroundColor: color.isThemeVar && color.value !== 'inherit' ? `var(${color.value.slice(4,-1)})` : color.value }}
+                        onClick={() => applyStyleText({ color: color.value })} title={color.name}
+                      >
+                         {color.value === 'inherit' && <Eraser className="h-3 w-3 opacity-50"/>}
+                      </Button>
+                  ))}
+                </div>
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger><Highlighter className="mr-2 h-4 w-4" /> Highlight Color</DropdownMenuSubTrigger>
+             <DropdownMenuPortal>
+                <DropdownMenuSubContent className="w-auto p-1">
+                  <div className="grid grid-cols-8 gap-1 p-1 max-w-[200px]">
+                      <Button key={'no-highlight'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0 flex items-center justify-center"
+                        onClick={() => applyStyleText({'background-color': 'transparent'})} title="None"
+                      ><Eraser className="h-3 w-3 opacity-50"/></Button>
+                      {COLOR_PALETTE.filter(c => c.value !== 'inherit' && c.value !== 'hsl(var(--foreground))' && c.value !== 'hsl(var(--primary))').map(color => (
+                          <Button key={color.name + '-bg'} variant="outline" size="icon" className="h-6 w-6 rounded-full border-2 p-0"
+                          style={{ backgroundColor: color.isThemeVar ? `var(${color.value.slice(4,-1)})` : color.value }}
+                          onClick={() => applyStyleText({ 'background-color': color.value })} title={color.name} />
+                      ))}
+                  </div>
+                </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+           <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
+            <Highlighter className="mr-2 h-4 w-4 text-yellow-500" /> Highlight (Default)
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuSub>
+             <DropdownMenuSubTrigger><CaseSensitive className="mr-2 h-4 w-4" /> Change Case</DropdownMenuSubTrigger>
+             <DropdownMenuPortal>
                 <DropdownMenuSubContent>
                     <DropdownMenuItem onClick={() => editor.dispatchCommand(CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, 'lowercase')}>
                         <CaseLower className="mr-2 h-4 w-4" /> lowercase
@@ -939,19 +898,6 @@ const handleLinkDialogSubmit = useCallback(() => {
                 </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>
-          <DropdownMenuSeparator />
-          <DropdownMenuCheckboxItem checked={isStrikethrough} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')}>
-            <StrikethroughIcon className="mr-2 h-4 w-4" /> Strikethrough <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isSubscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')}>
-            <Subscript className="mr-2 h-4 w-4" /> Subscript <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isSuperscript} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')}>
-            <Superscript className="mr-2 h-4 w-4" /> Superscript <DropdownMenuShortcut>Ctrl+.</DropdownMenuShortcut>
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={isHighlight} onCheckedChange={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight')}>
-            <Highlighter className="mr-2 h-4 w-4" /> Highlight (Default)
-          </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator/>
           <DropdownMenuItem onClick={clearFormatting}>
             <Eraser className="mr-2 h-4 w-4" /> Clear Formatting
@@ -960,8 +906,8 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Separator orientation="vertical" className="h-6 mx-1" />
 
+      <Separator orientation="vertical" className="h-6 mx-1" />
 
       <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
         <DialogTrigger asChild>
@@ -983,7 +929,7 @@ const handleLinkDialogSubmit = useCallback(() => {
             />
           </div>
           <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsGenAIDialogOpen(false)}>Cancel</Button>
+              <DialogClose asChild><Button type="button" variant="outline" onClick={() => setIsGenAIDialogOpen(false)}>Cancel</Button></DialogClose>
             <Button type="button" onClick={handleGenerateText} disabled={isGeneratingText}>
               {isGeneratingText && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Generate
@@ -1010,7 +956,7 @@ const handleLinkDialogSubmit = useCallback(() => {
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
-              editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true });
+              editor.dispatchCommand(INSERT_EQUATION_COMMAND, { showModal: true } as InsertEquationPayload);
             }}
           >
             <Calculator className="mr-2 h-4 w-4" /> Equation
@@ -1072,8 +1018,49 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DropdownMenuContent>
       </DropdownMenu>
 
+       {/* Dialogs for various actions */}
+       <Dialog open={isLinkDialogOpen} onOpenChange={(isOpen) => {
+          setIsLinkDialogOpen(isOpen);
+          if (!isOpen) {
+              setLinkDialogUrl('https://');
+              setLinkDialogText('');
+              setIsEditingLink(false);
+          }
+        }}>
+          {/* DialogTrigger is now inside the new consolidated dropdown */}
+          <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                  <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                      <Label htmlFor="link-url-dialog">URL</Label>
+                      <Input
+                          id="link-url-dialog"
+                          value={linkDialogUrl}
+                          onChange={(e) => setLinkDialogUrl(e.target.value)}
+                          placeholder="https://example.com"
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleLinkDialogSubmit();}}}
+                      />
+                  </div>
+                   <div className="grid gap-2">
+                      <Label htmlFor="link-text-dialog">Text to display (optional)</Label>
+                      <Input
+                          id="link-text-dialog"
+                          value={linkDialogText}
+                          onChange={(e) => setLinkDialogText(e.target.value)}
+                          placeholder="Link text"
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleLinkDialogSubmit();}}}
+                      />
+                  </div>
+              </div>
+              <DialogFooter>
+                  <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                  <Button type="button" onClick={handleLinkDialogSubmit}>{isEditingLink ? "Update" : "Insert"}</Button>
+              </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-       {/* Insert Table Dialog */}
       <Dialog open={isInsertTableDialogOpen} onOpenChange={setIsInsertTableDialogOpen}>
         <DialogContent className="sm:max-w-xs">
             <DialogHeader><DialogTitle>Insert Table</DialogTitle></DialogHeader>
@@ -1094,7 +1081,6 @@ const handleLinkDialogSubmit = useCallback(() => {
         </DialogContent>
       </Dialog>
 
-      {/* Insert Image Dialog */}
       <Dialog open={isInsertImageDialogOpen} onOpenChange={setIsInsertImageDialogOpen}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Insert Image</DialogTitle></DialogHeader>
@@ -1125,5 +1111,3 @@ const handleLinkDialogSubmit = useCallback(() => {
     </div>
   );
 }
-
-    
