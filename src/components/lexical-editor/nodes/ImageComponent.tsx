@@ -30,14 +30,11 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Edit3, Check, X, MessageSquarePlus } from 'lucide-react';
 
-// Minimal set of nodes for the caption editor
 const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
 
-
-// Helper function to safely check editor read-only state
 function isEditorActuallyReadOnly(editor: LexicalEditor | null | undefined): boolean {
   if (!editor || typeof editor.isReadOnly !== 'function') {
-    return true; // Default to read-only if editor is null or isReadOnly is not a function
+    return true;
   }
   return editor.isReadOnly();
 }
@@ -90,7 +87,8 @@ function ImageResizer({
 
 
   useEffect(() => {
-    parentEditor.getEditorState().read(() => {
+    const editorState = parentEditor.getEditorState();
+    editorState.read(() => {
         const node = $getNodeByKey(imageNodeKey) as ImageNode | null;
         if ($isImageNode(node)) {
            setCurrentAltText(node.getAltText());
@@ -107,7 +105,7 @@ function ImageResizer({
 
     const imageElement = imageRef.current;
     if (!imageElement) return;
-    
+
     event.preventDefault();
     const { width, height } = imageElement.getBoundingClientRect();
     const positioning = positioningRef.current;
@@ -120,7 +118,7 @@ function ImageResizer({
     positioning.startY = event.clientY;
     positioning.isResizing = true;
     positioning.direction = direction;
-    positioning.lockAspectRatio = event.shiftKey;
+    positioning.lockAspectRatio = event.shiftKey; // Lock aspect ratio if Shift is pressed
 
 
     userSelect.current.value = document.body.style.getPropertyValue(
@@ -151,35 +149,41 @@ function ImageResizer({
       const diffX = event.clientX - positioning.startX;
       const diffY = event.clientY - positioning.startY;
 
-      if ([0, 3, 5].includes(positioning.direction)) { // Left handles
+      // Horizontal resizing
+      if ([0, 3, 5].includes(positioning.direction)) { // Left handles (NW, W, SW)
         newWidth -= diffX;
       }
-      if ([2, 4, 7].includes(positioning.direction)) { // Right handles
+      if ([2, 4, 7].includes(positioning.direction)) { // Right handles (NE, E, SE)
         newWidth += diffX;
       }
-      if ([0, 1, 2].includes(positioning.direction)) { // Top handles
+
+      // Vertical resizing
+      if ([0, 1, 2].includes(positioning.direction)) { // Top handles (NW, N, NE)
         newHeight -= diffY;
       }
-      if ([5, 6, 7].includes(positioning.direction)) { // Bottom handles
+      if ([5, 6, 7].includes(positioning.direction)) { // Bottom handles (SW, S, SE)
         newHeight += diffY;
       }
-      
-      const minSize = 50;
+
+      const minSize = 50; // Minimum size for width and height
       newWidth = Math.max(newWidth, minSize);
       newHeight = Math.max(newHeight, minSize);
 
       if (positioning.lockAspectRatio) {
-        if (positioning.direction === 1 || positioning.direction === 6) { 
+        // Adjust width or height based on the primary direction of drag or handle type
+        if (positioning.direction === 1 || positioning.direction === 6) { // N or S handles (vertical resize primary)
           newWidth = newHeight * positioning.ratio;
-        } else if (positioning.direction === 3 || positioning.direction === 4) { 
+        } else if (positioning.direction === 3 || positioning.direction === 4) { // W or E handles (horizontal resize primary)
           newHeight = newWidth / positioning.ratio;
-        } else { 
-            if (Math.abs(diffX) > Math.abs(diffY)) {
-                newHeight = newWidth / positioning.ratio;
-            } else {
-                newWidth = newHeight * positioning.ratio;
-            }
+        } else { // Corner handles
+          // Prioritize the dimension that changed more, or maintain aspect ratio based on width if both changed similarly
+          if (Math.abs(diffX) > Math.abs(diffY)) {
+            newHeight = newWidth / positioning.ratio;
+          } else {
+            newWidth = newHeight * positioning.ratio;
+          }
         }
+        // Re-check min size after aspect ratio adjustment
         newWidth = Math.max(newWidth, minSize);
         newHeight = Math.max(newHeight, minSize);
       }
@@ -192,7 +196,7 @@ function ImageResizer({
       imageElement.style.height = `${positioning.currentHeight}px`;
     }
   };
-  const handlePointerUp = (event: PointerEvent) => {
+  const handlePointerUp = () => {
     const imageElement = imageRef.current;
     const positioning = positioningRef.current;
     if (imageElement && positioning.isResizing) {
@@ -239,7 +243,7 @@ function ImageResizer({
 
 
   return (
-    <div ref={controlWrapperRef} className="absolute inset-0 z-10 pointer-events-none">
+    <div ref={controlWrapperRef} className="absolute inset-0 z-10 pointer-events-none" data-lexical-image-resizer>
       {!editorReadOnly && (
         <>
          <div className="absolute top-2 left-2 bg-background/80 p-1 rounded shadow-md flex items-center gap-1 text-xs pointer-events-auto">
@@ -324,7 +328,7 @@ export default function ImageComponent({
       }
       return false;
     },
-    [isSelected, nodeKey, parentEditor, clearSelection], 
+    [isSelected, nodeKey, parentEditor, clearSelection],
   );
 
 
@@ -357,15 +361,20 @@ export default function ImageComponent({
           const target = event.target as Node;
           const captionEditorElement = imageWrapperRef.current?.querySelector('.image-caption-editor-wrapper');
           if (captionEditorElement && captionEditorElement.contains(target)) {
-            return false;
+            return false; // Let caption editor handle clicks
           }
 
           if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
             if (!event.shiftKey) {
               clearSelection();
             }
-            setSelected(!isSelected); // Toggle selection on click
+            setSelected(true); // Always select on click
             return true;
+          }
+          // If clicked outside, and this image was selected, clear selection
+          if (isSelected) {
+            clearSelection();
+            setSelected(false);
           }
           return false;
         },
@@ -375,17 +384,12 @@ export default function ImageComponent({
         DRAGSTART_COMMAND,
         (event) => {
             const target = event.target as Node;
-            if (imgRef.current && imgRef.current.parentElement?.contains(target) && target !== imgRef.current) {
-                const controlWrapper = imgRef.current.parentElement.querySelector('[data-lexical-image-resizer]');
-                if (controlWrapper && controlWrapper.contains(target)) {
-                     event.preventDefault();
-                     return true;
+            if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
+                // Prevent native image dragging if the image is selected or resizable
+                if (isSelected || (resizable && !editorReadOnly)) {
+                    event.preventDefault();
+                    return true;
                 }
-            }
-
-            if (imageWrapperRef.current && imageWrapperRef.current.contains(event.target as Node)) {
-                if (isSelected || resizable) event.preventDefault(); 
-                return true;
             }
             return false;
         },
@@ -396,8 +400,6 @@ export default function ImageComponent({
       parentEditor.registerCommand(KEY_ESCAPE_COMMAND, onEscape, COMMAND_PRIORITY_LOW),
       parentEditor.registerCommand(KEY_ENTER_COMMAND, (event) => {
         if (isSelected && $isNodeSelection($getSelection())) {
-            // Potentially insert paragraph after image on Enter if selected
-            // For now, just prevent default to avoid splitting image node
             event.preventDefault();
             return true;
         }
@@ -418,6 +420,7 @@ export default function ImageComponent({
     onEscape,
     setSelected,
     resizable,
+    editorReadOnly,
   ]);
 
 
@@ -443,6 +446,7 @@ export default function ImageComponent({
   );
 
   const handleAddCaptionHandler = () => {
+    if (editorReadOnly) return;
     parentEditor.update(() => {
         const node = $getNodeByKey(nodeKey);
         if ($isImageNode(node)) {
@@ -451,8 +455,8 @@ export default function ImageComponent({
     });
   };
 
-  const imageInitialWidth = typeof width === 'number' ? width : (resizable ? 400 : undefined);
-  const imageInitialHeight = typeof height === 'number' ? height : (resizable && imageInitialWidth ? imageInitialWidth * 0.75 : undefined);
+  const imageCurrentWidth = typeof width === 'number' ? width : 'auto';
+  const imageCurrentHeight = typeof height === 'number' ? height : 'auto';
 
   return (
     <Suspense fallback={null}>
@@ -461,33 +465,29 @@ export default function ImageComponent({
           'relative inline-block group editor-image',
            isSelected && !editorReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm'
         )}
-        draggable={!editorReadOnly && isSelected && !isResizing && !editorReadOnly}
+        draggable={!editorReadOnly && isSelected && !isResizing}
         ref={imageWrapperRef}
         style={{
-          width: width !== 'inherit' ? `${imageInitialWidth}px` : 'auto',
+          width: imageCurrentWidth === 'auto' ? undefined : `${imageCurrentWidth}px`,
           cursor: isSelected && resizable && !editorReadOnly && !isResizing ? 'grab' : (isResizing ? 'grabbing': 'default')
         }}
       >
-        <div className="relative" data-lexical-image-resizer>
+        <div className="relative" data-lexical-image-resizer-container>
             <img
               ref={imgRef}
               src={src}
               alt={altText}
-              className={cn(
-                'block',
-                (typeof imageInitialWidth !== 'number') && 'max-w-full h-auto',
-                (typeof imageInitialHeight !== 'number') && 'h-auto',
-              )}
+              className={cn('block', imageCurrentWidth === 'auto' && 'max-w-full', imageCurrentHeight === 'auto' && 'h-auto')}
               style={{
-                width: width !== 'inherit' ? `${imageInitialWidth}px` : 'auto',
-                height: height !== 'inherit' ? `${imageInitialHeight}px` : 'auto',
+                width: imageCurrentWidth === 'auto' ? undefined : `${imageCurrentWidth}px`,
+                height: imageCurrentHeight === 'auto' ? undefined : `${imageCurrentHeight}px`,
               }}
               data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'}
             />
             {isSelected && !showCaption && !editorReadOnly && (
                  <Button
                     onClick={handleAddCaptionHandler}
-                    className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 bg-black/70 text-white hover:bg-black/90 h-8 px-3 text-xs pointer-events-auto"
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 bg-black/70 text-white hover:bg-black/90 h-8 px-3 text-xs pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                     size="sm"
                   >
                     <MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
@@ -507,7 +507,9 @@ export default function ImageComponent({
         )}
       </div>
       {showCaption && captionEditorInstance && (
-        <div className="image-caption-editor-wrapper mt-1 p-2 border border-input rounded bg-muted/20 focus-within:ring-1 focus-within:ring-ring focus-within:ring-offset-2 rounded-b-md">
+        <div className="image-caption-editor-wrapper mt-1 p-2 border border-input rounded bg-muted/20 focus-within:ring-1 focus-within:ring-ring focus-within:ring-offset-2 rounded-b-md max-w-full"
+         style={{ width: imageCurrentWidth === 'auto' ? 'fit-content' : `${imageCurrentWidth}px` }} // Match caption width to image width
+        >
           <LexicalNestedComposer
             initialEditor={captionEditorInstance}
             initialNodes={captionEditorNodes}

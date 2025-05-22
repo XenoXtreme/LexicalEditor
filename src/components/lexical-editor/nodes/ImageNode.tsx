@@ -53,7 +53,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   __width: 'inherit' | number;
   __height: 'inherit' | number;
   __showCaption: boolean;
-  __caption: LexicalEditor; 
+  __caption: LexicalEditor;
 
   static getType(): string {
     return 'image';
@@ -63,31 +63,29 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     const newCaptionEditor = createEditor({
       nodes: captionEditorNodes,
       onError: (error) => console.error('Caption editor error (clone):', error),
-      theme: { 
+      theme: {
         paragraph: 'editor-image-caption-paragraph',
-        // Add other theme properties for caption if needed, e.g., text styles
       }
     });
 
     try {
       const originalCaptionState = node.__caption.getEditorState();
-      // Ensure originalCaptionState is valid and has clone and isEmpty methods
       if (originalCaptionState && typeof originalCaptionState.clone === 'function') {
-        const clonedCaptionState = originalCaptionState.clone();
-        
-        if (clonedCaptionState && typeof clonedCaptionState.isEmpty === 'function' && !clonedCaptionState.isEmpty()) {
-          newCaptionEditor.setEditorState(clonedCaptionState);
-        } else if (clonedCaptionState && typeof clonedCaptionState.isEmpty === 'function' && clonedCaptionState.isEmpty()) {
-          console.warn("ImageNode.clone: Cloned caption state was empty. New caption editor will use its default state.");
-          // newCaptionEditor already has a default non-empty state
+        const clonedOriginalCaptionState = originalCaptionState.clone();
+
+        if (clonedOriginalCaptionState && typeof clonedOriginalCaptionState.isEmpty === 'function' && !clonedOriginalCaptionState.isEmpty()) {
+          newCaptionEditor.setEditorState(clonedOriginalCaptionState);
+        } else if (clonedOriginalCaptionState && typeof clonedOriginalCaptionState.isEmpty === 'function' && clonedOriginalCaptionState.isEmpty()) {
+          // The newCaptionEditor already has a default non-empty state with a paragraph.
+          // console.warn("ImageNode.clone: Cloned caption state was empty. New caption editor will use its default state.");
         } else {
-          console.error("ImageNode.clone: clonedCaptionState is not a valid EditorState or does not have isEmpty method. Using default state.");
+          // console.error("ImageNode.clone: clonedOriginalCaptionState is not a valid EditorState or does not have isEmpty method. Using default state.");
         }
       } else {
-        console.error("ImageNode.clone: Original caption state is invalid or does not have clone method. Using default state.");
+        // console.error("ImageNode.clone: Original caption state is invalid or does not have clone method. Using default state.");
       }
     } catch (e) {
-      console.error("ImageNode.clone: Error processing caption state. New caption editor will use its default state.", e);
+      // console.error("ImageNode.clone: Error processing caption state. New caption editor will use its default state.", e);
     }
 
     return new ImageNode(
@@ -96,45 +94,41 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       node.__width,
       node.__height,
       node.__showCaption,
-      newCaptionEditor, 
+      newCaptionEditor,
       node.__key,
     );
   }
 
   static importJSON(serializedNode: SerializedImageNode): ImageNode {
     const { altText, height, src, width, showCaption, caption: serializedCaption } = serializedNode;
-    
+
     let initialCaptionEditorStateString: string | undefined;
 
     if (showCaption && serializedCaption && serializedCaption.editorState) {
         try {
-            // Attempt to parse the serialized state to ensure it's valid and not empty
             const tempEditorForParsing = createEditor({ nodes: captionEditorNodes, onError: () => {} });
             const parsedState = tempEditorForParsing.parseEditorState(serializedCaption.editorState);
-            
+
             if (parsedState.isEmpty()) {
-                console.warn("ImageNode.importJSON: Serialized caption was empty. Initializing with default.");
-                // Let createEditor below handle default initialization
+                // console.warn("ImageNode.importJSON: Serialized caption was empty. Initializing with default.");
             } else {
                 initialCaptionEditorStateString = JSON.stringify(parsedState.toJSON());
             }
         } catch (e) {
-            console.error("ImageNode.importJSON: Error parsing serialized caption state. Initializing with default.", e);
-            // Fallback to default initialization by createEditor
+            // console.error("ImageNode.importJSON: Error parsing serialized caption state. Initializing with default.", e);
         }
     }
-    
+
     const captionEditor = createEditor({
         nodes: captionEditorNodes,
-        editorState: initialCaptionEditorStateString, // createEditor handles stringified JSON or undefined
-        theme: { 
+        editorState: initialCaptionEditorStateString,
+        theme: {
           paragraph: 'editor-image-caption-paragraph',
-          // text styles if needed
         },
         onError: (error) => console.error('Caption editor error (importJSON):', error),
     });
-    
-    const node = new ImageNode( 
+
+    const node = new ImageNode(
         src,
         altText,
         width,
@@ -162,7 +156,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     this.__showCaption = showCaption || false;
     this.__caption = caption || createEditor({
         nodes: captionEditorNodes,
-        theme: { 
+        theme: {
           paragraph: 'editor-image-caption-paragraph',
           text: {
             bold: 'font-bold',
@@ -182,7 +176,6 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       version: 1,
       width: this.__width === 'inherit' ? undefined : this.__width,
       showCaption: this.__showCaption,
-      // Only serialize caption if it's shown and valid
       caption: (this.__showCaption && this.__caption) ? this.__caption.getEditorState().toJSON() : undefined,
     };
   }
@@ -190,7 +183,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   createDOM(config: EditorConfig): HTMLElement {
     const span = document.createElement('span');
     const theme = config.theme;
-    const className = theme.image; 
+    const className = theme.image;
     if (className !== undefined) {
       span.className = className;
     }
@@ -199,17 +192,16 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   updateDOM(prevNode: ImageNode, dom: HTMLElement, config: EditorConfig): boolean {
     if (prevNode.__showCaption !== this.__showCaption) {
-      return true; 
+      return true;
     }
-    // Potentially re-render if src or altText changes, though ImageComponent handles this internally
-    if (prevNode.__src !== this.__src || prevNode.__altText !== this.__altText) {
+    if (prevNode.__src !== this.__src || prevNode.__altText !== this.__altText || prevNode.__width !== this.__width || prevNode.__height !== this.__height) {
         return true;
     }
     return false;
   }
 
   getSrc(): string {
-    return this.__src;
+    return this.getLatest().__src;
   }
 
   getAltText(): string {
@@ -227,7 +219,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   getShowCaption(): boolean {
     return this.getLatest().__showCaption;
   }
-  
+
   getCaptionEditor(): LexicalEditor {
     return this.getLatest().__caption;
   }
@@ -242,13 +234,11 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     const writable = this.getWritable();
     if (writable.__showCaption !== showCaption) {
         writable.__showCaption = showCaption;
-        // If hiding caption, we might want to clear its content or handle its editor state
-        // For now, just toggling visibility.
     }
   }
 
   isResizable(): boolean {
-    return true; 
+    return true;
   }
 
   decorate(editor: LexicalEditor, config: EditorConfig): JSX.Element {
@@ -261,9 +251,9 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
           height={this.__height}
           nodeKey={this.getKey()}
           showCaption={this.__showCaption}
-          captionEditor={this.__caption} 
+          captionEditor={this.__caption}
           resizable={this.isResizable()}
-          editor={editor} // Pass the parent editor instance
+          editor={editor}
         />
       </Suspense>
     );
@@ -275,13 +265,12 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         conversion: convertImageElement,
         priority: 0,
       }),
-      // Could add a div[data-lexical-image-caption] rule here if needed for full HTML roundtrip
     };
   }
 
   exportDOM(editor: LexicalEditor): DOMExportOutput {
-    const {element} = super.exportDOM(editor); 
-    if (element && element instanceof HTMLElement) { // Ensure element is an HTMLElement
+    const {element} = super.exportDOM(editor);
+    if (element && element instanceof HTMLElement) {
       const img = document.createElement('img');
       img.setAttribute('src', this.__src);
       img.setAttribute('alt', this.__altText);
@@ -296,9 +285,6 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       if (this.__showCaption && this.__caption) {
         const captionDiv = document.createElement('div');
         captionDiv.setAttribute('data-lexical-image-caption', 'true');
-        // It's complex to serialize Lexical editor state to simple text/HTML here.
-        // For a simple representation, one might take text content.
-        // For full fidelity, a proper HTML export of the caption editor would be needed.
         this.__caption.getEditorState().read(() => {
             const captionText = this.__caption.getRootElement()?.getTextContent();
             captionDiv.textContent = captionText || '';
@@ -316,7 +302,7 @@ export type ImagePayload = {
   src: string;
   width?: 'inherit' | number;
   showCaption?: boolean;
-  caption?: LexicalEditor; 
+  caption?: LexicalEditor;
   key?: NodeKey;
 };
 
@@ -327,17 +313,17 @@ export function $createImageNode({
   src,
   width,
   showCaption,
-  caption, 
+  caption,
   key,
 }: ImagePayload): ImageNode {
   return $applyNodeReplacement(
     new ImageNode(
-      src, 
-      altText, 
-      width, 
-      height, 
-      showCaption, 
-      caption, 
+      src,
+      altText,
+      width,
+      height,
+      showCaption,
+      caption,
       key
     )
   );
@@ -348,5 +334,3 @@ export function $isImageNode(
 ): node is ImageNode {
   return node instanceof ImageNode;
 }
-
-    
