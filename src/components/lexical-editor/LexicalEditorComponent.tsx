@@ -12,23 +12,21 @@ import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPl
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
 import 'katex/dist/katex.min.css';
-import { mergeRegister } from '@lexical/utils';
-import { $findMatchingParent } from '@lexical/utils';
+import { mergeRegister, $findMatchingParent } from '@lexical/utils';
 
 
 import EditorTheme from './themes/EditorTheme';
 import EditorNodes from './nodes/EditorNodes';
 import { LexicalErrorBoundary } from './EditorErrorBoundary';
-import ToolbarPlugin, { OPEN_LINK_DIALOG_COMMAND, CUSTOM_CLEAR_FORMATTING_COMMAND, CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, type TextCaseType, INSERT_IMAGE_COMMAND, INSERT_TABLE_DIALOG_COMMAND } from './plugins/ToolbarPlugin';
+import ToolbarPlugin, { OPEN_LINK_DIALOG_COMMAND, CUSTOM_CLEAR_FORMATTING_COMMAND, CUSTOM_TRANSFORM_TEXT_CASE_COMMAND, type TextCaseType, INSERT_IMAGE_COMMAND, INSERT_TABLE_DIALOG_COMMAND, INSERT_POLL_COMMAND, INSERT_STICKY_NOTE_COMMAND, INSERT_COLUMNS_LAYOUT_COMMAND } from './plugins/ToolbarPlugin';
 import AutoFocusPlugin from './plugins/AutoFocusPlugin';
 import { Toaster } from "@/components/ui/toaster";
 import { Separator } from '@/components/ui/separator';
 
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
-import EquationPlugin, { INSERT_EQUATION_COMMAND } from './plugins/EquationPlugin';
+import EquationPlugin from './plugins/EquationPlugin';
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
-import CollapsiblePlugin from './plugins/Collapsible';
 
 
 import {
@@ -42,6 +40,8 @@ import {
   OUTDENT_CONTENT_COMMAND,
   $createParagraphNode,
   $isRootOrShadowRoot,
+  $createTextNode,
+  INSERT_PARAGRAPH_COMMAND,
   // $isTextNode, // Not directly used here anymore
 } from 'lexical';
 
@@ -222,6 +222,54 @@ function EditorLogicHandler() {
           }
         });
         return true;
+      }, COMMAND_PRIORITY_NORMAL),
+      editor.registerCommand(INSERT_POLL_COMMAND, () => {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            const pollNode = $createParagraphNode().append($createTextNode('[Poll Placeholder: Question?, Option 1, Option 2]'));
+            selection.insertNodes([pollNode]);
+            if (selection.isCollapsed()) {
+              pollNode.selectEnd();
+            }
+          } else {
+             editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+             editor.update(() => $getSelection()?.insertText('[Poll Placeholder: Question?, Option 1, Option 2]'));
+          }
+        });
+        return true;
+      }, COMMAND_PRIORITY_NORMAL),
+      editor.registerCommand(INSERT_STICKY_NOTE_COMMAND, () => {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            const stickyNode = $createParagraphNode().append($createTextNode('[Sticky Note Placeholder: Your content here]'));
+            selection.insertNodes([stickyNode]);
+             if (selection.isCollapsed()) {
+              stickyNode.selectEnd();
+            }
+          } else {
+            editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+            editor.update(() => $getSelection()?.insertText('[Sticky Note Placeholder: Your content here]'));
+          }
+        });
+        return true;
+      }, COMMAND_PRIORITY_NORMAL),
+      editor.registerCommand(INSERT_COLUMNS_LAYOUT_COMMAND, () => {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+             const columnsNode = $createParagraphNode().append($createTextNode('[Columns Layout Placeholder: e.g., 2 Columns]'));
+            selection.insertNodes([columnsNode]);
+            if (selection.isCollapsed()) {
+              columnsNode.selectEnd();
+            }
+          } else {
+            editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+            editor.update(() => $getSelection()?.insertText('[Columns Layout Placeholder: e.g., 2 Columns]'));
+          }
+        });
+        return true;
       }, COMMAND_PRIORITY_NORMAL)
     );
     return () => {
@@ -263,7 +311,7 @@ export default function LexicalEditorComponent(): JSX.Element {
           <HorizontalRulePlugin />
           <TablePlugin />
           <EquationPlugin />
-          <CollapsiblePlugin />
+          {/* <CollapsiblePlugin /> // Removed as @lexical/collapsible was causing install issues */}
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
           <EditorLogicHandler /> {/* Add the logic handler here */}
