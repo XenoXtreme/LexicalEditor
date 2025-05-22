@@ -1,3 +1,4 @@
+
 "use client";
 import type { LexicalEditor, NodeKey } from 'lexical';
 import * as React from 'react';
@@ -33,28 +34,24 @@ import { Edit3, Check, X, MessageSquarePlus } from 'lucide-react';
 const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
 
 
-// Helper function to safely check editor read-only state by checking contenteditable attribute
+// Helper function to safely check editor read-only state
 function isEditorActuallyReadOnly(editor: LexicalEditor | null | undefined): boolean {
-  if (!editor) {
-    return true; // Default to read-only if editor is null or undefined
+  if (!editor || typeof editor.isReadOnly !== 'function') {
+    return true; // Default to read-only if editor is null or isReadOnly is not a function
   }
-  const rootElement = editor.getRootElement();
-  if (rootElement) {
-    return rootElement.contentEditable === 'false';
-  }
-  return true; // Default to read-only if root element not found
+  return editor.isReadOnly();
 }
 
 function ImageResizer({
   onResizeStart,
   onResizeEnd,
-  imageRef, // Ref to the actual <img> element
+  imageRef,
   editor: parentEditor,
   imageNodeKey,
 }: {
   onResizeStart: () => void;
   onResizeEnd: (width: number, height: number) => void;
-  imageRef: React.RefObject<HTMLImageElement>; // Changed to HTMLImageElement
+  imageRef: React.RefObject<HTMLImageElement>;
   editor: LexicalEditor;
   imageNodeKey: NodeKey;
 }): JSX.Element {
@@ -172,13 +169,11 @@ function ImageResizer({
       newHeight = Math.max(newHeight, minSize);
 
       if (positioning.lockAspectRatio) {
-        // Adjust based on the primary axis of drag or the larger change
-        if (positioning.direction === 1 || positioning.direction === 6) { // N, S
+        if (positioning.direction === 1 || positioning.direction === 6) { 
           newWidth = newHeight * positioning.ratio;
-        } else if (positioning.direction === 3 || positioning.direction === 4) { // W, E
+        } else if (positioning.direction === 3 || positioning.direction === 4) { 
           newHeight = newWidth / positioning.ratio;
-        } else { // Corners
-            // Determine dominant drag axis for aspect ratio lock on corners
+        } else { 
             if (Math.abs(diffX) > Math.abs(diffY)) {
                 newHeight = newWidth / positioning.ratio;
             } else {
@@ -274,7 +269,7 @@ function ImageResizer({
           {resizerDirections.map(({ direction, style }) => (
             <div
               key={direction}
-              className="absolute bg-primary border border-primary-foreground rounded-sm w-3 h-3 opacity-80 hover:opacity-100 pointer-events-auto" // Changed to square
+              className="absolute bg-primary border border-primary-foreground rounded-sm w-3 h-3 opacity-80 hover:opacity-100 pointer-events-auto"
               style={style as React.CSSProperties}
               onPointerDown={(event) => handlePointerDown(event, direction as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7)}
             />
@@ -307,8 +302,8 @@ export default function ImageComponent({
   resizable?: boolean;
   editor: LexicalEditor;
 }): JSX.Element {
-  const imageWrapperRef = useRef<HTMLDivElement | null>(null); // For the outer div, controls selection outline
-  const imgRef = useRef<HTMLImageElement | null>(null); // Direct ref to <img> for resizer
+  const imageWrapperRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -319,15 +314,17 @@ export default function ImageComponent({
       if (isSelected && $isNodeSelection($getSelection())) {
         const event: KeyboardEvent = payload;
         event.preventDefault();
-        const node = $getNodeByKey(nodeKey);
-        if ($isImageNode(node)) {
-          node.remove();
-          return true;
-        }
+        parentEditor.update(() => {
+          const node = $getNodeByKey(nodeKey);
+          if ($isImageNode(node)) {
+            node.remove();
+          }
+        });
+        return true;
       }
       return false;
     },
-    [isSelected, nodeKey],
+    [isSelected, nodeKey, parentEditor, clearSelection], 
   );
 
 
@@ -348,7 +345,7 @@ export default function ImageComponent({
     const unregister = mergeRegister(
       parentEditor.registerUpdateListener(({ editorState }) => {
         if (isMounted) {
-          // Potential future use: setSelection(editorState.read($getSelection));
+          // Potential future use
         }
       }),
       parentEditor.registerCommand<MouseEvent>(
@@ -364,12 +361,10 @@ export default function ImageComponent({
           }
 
           if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
-            if (event.shiftKey) {
-              setSelected(!isSelected);
-            } else {
+            if (!event.shiftKey) {
               clearSelection();
-              setSelected(true);
             }
+            setSelected(!isSelected); // Toggle selection on click
             return true;
           }
           return false;
@@ -380,7 +375,6 @@ export default function ImageComponent({
         DRAGSTART_COMMAND,
         (event) => {
             const target = event.target as Node;
-            // Prevent dragging if the target is one of the resizer handles
             if (imgRef.current && imgRef.current.parentElement?.contains(target) && target !== imgRef.current) {
                 const controlWrapper = imgRef.current.parentElement.querySelector('[data-lexical-image-resizer]');
                 if (controlWrapper && controlWrapper.contains(target)) {
@@ -390,7 +384,7 @@ export default function ImageComponent({
             }
 
             if (imageWrapperRef.current && imageWrapperRef.current.contains(event.target as Node)) {
-                if (isSelected || resizable) event.preventDefault(); // Prevent native image drag
+                if (isSelected || resizable) event.preventDefault(); 
                 return true;
             }
             return false;
@@ -400,6 +394,15 @@ export default function ImageComponent({
       parentEditor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
       parentEditor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
       parentEditor.registerCommand(KEY_ESCAPE_COMMAND, onEscape, COMMAND_PRIORITY_LOW),
+      parentEditor.registerCommand(KEY_ENTER_COMMAND, (event) => {
+        if (isSelected && $isNodeSelection($getSelection())) {
+            // Potentially insert paragraph after image on Enter if selected
+            // For now, just prevent default to avoid splitting image node
+            event.preventDefault();
+            return true;
+        }
+        return false;
+      }, COMMAND_PRIORITY_LOW)
     );
     return () => {
       isMounted = false;
@@ -428,7 +431,7 @@ export default function ImageComponent({
           setIsResizing(false);
           return;
       }
-      setIsResizing(false); // Always set resizing to false after operation
+      setIsResizing(false);
       parentEditor.update(() => {
         const node = $getNodeByKey(nodeKey);
         if ($isImageNode(node)) {
@@ -455,25 +458,24 @@ export default function ImageComponent({
     <Suspense fallback={null}>
       <div
         className={cn(
-          'relative inline-block group editor-image', // editor-image is key for some global styles
+          'relative inline-block group editor-image',
            isSelected && !editorReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm'
         )}
-        draggable={!editorReadOnly && isSelected && !isResizing} // Prevent dragging while resizing
+        draggable={!editorReadOnly && isSelected && !isResizing && !editorReadOnly}
         ref={imageWrapperRef}
         style={{
           width: width !== 'inherit' ? `${imageInitialWidth}px` : 'auto',
-          // height: imageInitialHeight !== 'inherit' ? `${imageInitialHeight}px` : 'auto', // Height will be auto or set by resizer
           cursor: isSelected && resizable && !editorReadOnly && !isResizing ? 'grab' : (isResizing ? 'grabbing': 'default')
         }}
       >
-        <div className="relative" data-lexical-image-resizer> {/* Wrapper for image and Add Caption button */}
+        <div className="relative" data-lexical-image-resizer>
             <img
               ref={imgRef}
               src={src}
               alt={altText}
               className={cn(
                 'block',
-                (typeof imageInitialWidth !== 'number') && 'max-w-full h-auto', // Allow natural size if not set
+                (typeof imageInitialWidth !== 'number') && 'max-w-full h-auto',
                 (typeof imageInitialHeight !== 'number') && 'h-auto',
               )}
               style={{
@@ -497,7 +499,7 @@ export default function ImageComponent({
         {isSelected && resizable && !editorReadOnly && imgRef.current && (
           <ImageResizer
             editor={parentEditor}
-            imageRef={imgRef} // Pass the <img> ref
+            imageRef={imgRef}
             imageNodeKey={nodeKey}
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
@@ -527,4 +529,3 @@ export default function ImageComponent({
     </Suspense>
   );
 }
-
