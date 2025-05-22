@@ -1,3 +1,4 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -22,13 +23,19 @@ import {
   RangeSelection,
   SerializedElementNode,
   Spread,
+  $getRoot,
 } from 'lexical';
 
 import {setDomHiddenUntilFound} from './utils';
+import {$isCollapsibleTitleNode} from "./CollapsibleTitleNode";
+import {$isCollapsibleContentNode} from "./CollapsibleContentNode";
+
 
 type SerializedCollapsibleContainerNode = Spread<
   {
     open: boolean;
+    type: 'collapsible-container';
+    version: 1;
   },
   SerializedElementNode
 >;
@@ -60,7 +67,9 @@ export class CollapsibleContainerNode extends ElementNode {
   }
 
   isShadowRoot(): boolean {
-    return true;
+    // This being true is important for nested editor behavior,
+    // ensuring selections and commands are contained.
+    return false; // Let's try false to see if it fixes selection issues, playground has it false.
   }
 
   canBeEmpty(): boolean {
@@ -68,86 +77,93 @@ export class CollapsibleContainerNode extends ElementNode {
   }
   
   canInsertTextBefore(): boolean {
-    return false;
+    return true; // Allow text insertion before for easier editing flow
   }
   
   canInsertTextAfter(): boolean {
-    return false;
+    return true; // Allow text insertion after
   }
   
   isInline(): boolean {
     return false;
   }
 
+  // This method handles what happens when you try to extract content from the container
+  // e.g. by selecting across its boundaries.
   extractWithChild(
-    child: LexicalNode,
-    selection: RangeSelection,
-    destination: 'clone' | 'html',
+    child: LexicalNode, // The child node where the selection is anchored/focused
+    selection: RangeSelection, // The current selection
+    destination: 'clone' | 'html', // Whether the extraction is for cloning or HTML serialization
   ): boolean {
+    // If the child is not an ElementNode, let Lexical handle default behavior
     if (!$isElementNode(child)) {
       return false;
     }
   
+    // Collect all children from both title and content nodes
     const nodesToExtract: LexicalNode[] = [];
-    for (const containerChild of this.getChildren()) {
-      if ($isElementNode(containerChild)) {
+    this.getChildren().forEach(containerChild => {
+      if ($isCollapsibleTitleNode(containerChild) || $isCollapsibleContentNode(containerChild)) {
         nodesToExtract.push(...containerChild.getChildren());
       }
-    }
+    });
   
-    for (const node of nodesToExtract) {
-      this.insertBefore(node);
-    }
+    // Insert these collected nodes before the container itself
+    nodesToExtract.forEach(node => this.insertBefore(node));
     
+    // Remove the now-empty container
     this.remove();
-    return true;
+    return true; // Indicate that we've handled the extraction
   }
   
 
+  // This method handles what happens when you press Backspace at the beginning of the container
   collapseAtStart(selection: RangeSelection): boolean {
     // Get all children from title and content nodes
     const nodesToInsert: LexicalNode[] = [];
-    for (const child of this.getChildren()) {
-      if ($isElementNode(child)) {
+    this.getChildren().forEach(child => {
+      if ($isCollapsibleTitleNode(child) || $isCollapsibleContentNode(child)) {
         nodesToInsert.push(...child.getChildren());
       }
-    }
+    });
     
-    // Get the previous sibling to potentially merge with
     const previousSibling = this.getPreviousSibling();
     
     // Insert all extracted nodes before this container
-    for (const node of nodesToInsert) {
-      this.insertBefore(node);
-    }
+    nodesToInsert.forEach(node => this.insertBefore(node));
     
     // Try to merge with previous sibling if it's an element
-    if (previousSibling && $isElementNode(previousSibling) && nodesToInsert.length > 0) {
-      const [firstChild] = nodesToInsert;
-      if (firstChild && $isElementNode(firstChild)) {
+    if ($isElementNode(previousSibling) && nodesToInsert.length > 0) {
+      const firstExtractedNode = nodesToInsert[0];
+      if ($isElementNode(firstExtractedNode)) {
         try {
           // Move children from first extracted node to previous sibling
-          const children = firstChild.getChildren();
-          for (const child of children) {
-            previousSibling.append(child);
-          }
-          firstChild.remove();
+          const childrenToMove = firstExtractedNode.getChildren();
+          childrenToMove.forEach(childToMove => previousSibling.append(childToMove));
+          firstExtractedNode.remove(); // Remove the now-empty first extracted node
           
-          // Set selection to the end of the merged content
+          // Set selection to the end of the merged content in the previous sibling
           previousSibling.selectEnd();
         } catch (error) {
-          console.warn('Could not merge nodes during collapse:', error);
+          console.warn('Could not merge nodes during collapseAtStart:', error);
+          // If merging fails, at least the content is out, and we can select the first extracted node
+          if (nodesToInsert[0]) nodesToInsert[0].selectPrevious();
         }
+      } else if (nodesToInsert[0]) {
+         nodesToInsert[0].selectPrevious();
       }
+    } else if (nodesToInsert.length > 0 && nodesToInsert[0]) {
+      // If no previous sibling to merge with, select the first extracted node
+       nodesToInsert[0].selectPrevious();
     }
     
     // Remove this container
     this.remove();
-    return true;
+    return true; // Indicate that the collapse was handled
   }
   
   // Override insertNewAfter to handle what happens when user presses Enter after the container
-  insertNewAfter(selection: RangeSelection, restoreSelection = true): ElementNode | null {
+  insertNewAfter(selection?: RangeSelection, restoreSelection = true): ElementNode | null {
     const newElement = $createParagraphNode();
     this.insertAfter(newElement, restoreSelection);
     return newElement;
@@ -156,57 +172,61 @@ export class CollapsibleContainerNode extends ElementNode {
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {
     // details is not well supported in Chrome #5582
     let dom: HTMLElement;
-    if (IS_CHROME) {
-      dom = document.createElement('div');
-      dom.setAttribute('open', '');
-    } else {
-      const detailsDom = document.createElement('details');
-      detailsDom.open = this.__open;
-      detailsDom.addEventListener('toggle', () => {
-        const open = editor.getEditorState().read(() => this.getOpen());
-        if (open !== detailsDom.open) {
-          editor.update(() => this.toggleOpen());
-        }
-      });
-      dom = detailsDom;
-    }
-    dom.classList.add('Collapsible__container');
+    // Always use div for consistency and apply open state via data attribute
+    dom = document.createElement('div');
+    dom.setAttribute('data-open', String(this.__open)); // Use data attribute for open state
+
+    dom.classList.add(config.theme.collapsibleContainer || 'editor-collapsible-container');
+    
+    // For Chrome, handle click on summary to toggle state
+    // This logic is better handled within the CollapsibleTitleNode's interaction
+    // if (IS_CHROME) {
+    //   // This event listener would be on the container, but needs to target the summary.
+    //   // It's more robust to handle this in the CollapsibleTitleNode's createDOM or a plugin.
+    // }
 
     return dom;
   }
 
-  updateDOM(prevNode: this, dom: HTMLDetailsElement): boolean {
+  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
     const currentOpen = this.__open;
     if (prevNode.__open !== currentOpen) {
-      // details is not well supported in Chrome #5582
-      if (IS_CHROME) {
-        const contentDom = dom.children[1];
-        if (!isHTMLElement(contentDom)) {
-          throw new Error('Expected contentDom to be an HTMLElement');
-        }
-        if (currentOpen) {
-          dom.setAttribute('open', '');
-          contentDom.hidden = false;
+      dom.setAttribute('data-open', String(currentOpen)); // Update data attribute
+
+      // For non-Chrome behavior (if we were using <details>), or for CSS-driven visibility
+      const contentDom = dom.children[1]; // Assuming title is first, content is second
+      if (isHTMLElement(contentDom)) {
+         if (currentOpen) {
+            contentDom.style.display = ''; // Or remove hidden attribute
         } else {
-          dom.removeAttribute('open');
-          setDomHiddenUntilFound(contentDom);
+            contentDom.style.display = 'none'; // Or set hidden attribute
         }
-      } else {
-        dom.open = this.__open;
       }
     }
-
-    return false;
+    return false; // No need for Lexical to reconcile children if structure is fixed
   }
 
-  static importDOM(): DOMConversionMap<HTMLDetailsElement> | null {
+  static importDOM(): DOMConversionMap<HTMLDetailsElement | HTMLElement> | null {
     return {
-      details: (domNode: HTMLDetailsElement) => {
+      details: (domNode: HTMLDetailsElement) => { // For pasting <details> elements
         return {
           conversion: $convertDetailsElement,
           priority: 1,
         };
       },
+      div: (domNode: HTMLElement) => { // For our own div-based representation
+        if (domNode.classList.contains('editor-collapsible-container') || domNode.getAttribute('data-lexical-collapsible-container')) {
+           const isOpen = domNode.getAttribute('data-open') === 'true';
+           return {
+            conversion: (domNodeDuringConversion: HTMLElement) => {
+                const node = $createCollapsibleContainerNode(isOpen);
+                return { node };
+            },
+            priority: 2
+           }
+        }
+        return null;
+      }
     };
   }
 
@@ -214,22 +234,24 @@ export class CollapsibleContainerNode extends ElementNode {
     serializedNode: SerializedCollapsibleContainerNode,
   ): CollapsibleContainerNode {
     const node = $createCollapsibleContainerNode(serializedNode.open);
-    node.setFormat(serializedNode.format);
-    node.setIndent(serializedNode.indent);
-    node.setDirection(serializedNode.direction);
+    // Attributes like format, indent, direction are handled by ElementNode's importJSON
     return node;
   }
 
-  exportDOM(): DOMExportOutput {
-    const element = document.createElement('details');
-    element.classList.add('Collapsible__container');
-    element.setAttribute('open', this.__open.toString());
+  exportDOM(editor: LexicalEditor): DOMExportOutput {
+    const element = document.createElement('div'); // Use div for export
+    element.classList.add(editor.getEditorConfig().theme.collapsibleContainer || 'editor-collapsible-container');
+    element.setAttribute('data-lexical-collapsible-container', 'true'); // Custom attribute for easier import
+    element.setAttribute('data-open', String(this.__open));
+    // Children (Title and Content) will be appended by Lexical's export process
     return {element};
   }
 
   exportJSON(): SerializedCollapsibleContainerNode {
     return {
-      ...super.exportJSON(),
+      ...super.exportJSON(), // Exports children, format, indent, direction
+      type: 'collapsible-container',
+      version: 1,
       open: this.__open,
     };
   }
@@ -249,7 +271,7 @@ export class CollapsibleContainerNode extends ElementNode {
 }
 
 export function $createCollapsibleContainerNode(
-  isOpen: boolean,
+  isOpen: boolean = true, // Default to open
 ): CollapsibleContainerNode {
   return new CollapsibleContainerNode(isOpen);
 }
@@ -259,3 +281,4 @@ export function $isCollapsibleContainerNode(
 ): node is CollapsibleContainerNode {
   return node instanceof CollapsibleContainerNode;
 }
+

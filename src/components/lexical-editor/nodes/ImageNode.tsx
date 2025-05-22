@@ -64,7 +64,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       nodes: captionEditorNodes,
       onError: (error) => console.error('Caption editor error (clone):', error),
       theme: {
-        paragraph: 'editor-image-caption-paragraph',
+        paragraph: 'editor-image-caption-paragraph', // Ensure this matches your theme
       }
     });
 
@@ -158,7 +158,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         nodes: captionEditorNodes,
         theme: {
           paragraph: 'editor-image-caption-paragraph',
-          text: {
+          text: { // Basic text styles for caption editor
             bold: 'font-bold',
             italic: 'italic',
           }
@@ -191,11 +191,14 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   }
 
   updateDOM(prevNode: ImageNode, dom: HTMLElement, config: EditorConfig): boolean {
+    // This method is primarily for updating DOM attributes directly.
+    // Since ImageComponent handles rendering, extensive logic here might be redundant
+    // unless specific attributes on the wrapper span need to change.
     if (prevNode.__showCaption !== this.__showCaption) {
-      return true;
+      return true; // Trigger re-render of decorator component
     }
     if (prevNode.__src !== this.__src || prevNode.__altText !== this.__altText || prevNode.__width !== this.__width || prevNode.__height !== this.__height) {
-        return true;
+        return true; // Trigger re-render if these core props change
     }
     return false;
   }
@@ -232,8 +235,17 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   setShowCaption(showCaption: boolean): void {
     const writable = this.getWritable();
-    if (writable.__showCaption !== showCaption) {
+    if (writable.__showCaption !== showCaption) { // Only update if different
         writable.__showCaption = showCaption;
+        // If caption is being shown for the first time, ensure it has content
+        if (showCaption && writable.__caption.getEditorState().isEmpty()) {
+            writable.__caption.update(() => {
+                const root = writable.__caption.getRootElement();
+                if (root && root.isEmpty()) {
+                    root.append($createParagraphNode());
+                }
+            });
+        }
     }
   }
 
@@ -251,9 +263,9 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
           height={this.__height}
           nodeKey={this.getKey()}
           showCaption={this.__showCaption}
-          captionEditor={this.__caption}
+          captionEditor={this.__caption} // Pass the editor instance
           resizable={this.isResizable()}
-          editor={editor}
+          editor={editor} // Pass the main editor instance
         />
       </Suspense>
     );
@@ -265,12 +277,13 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         conversion: convertImageElement,
         priority: 0,
       }),
+      // Could add conversion for figures with figcaptions later
     };
   }
 
   exportDOM(editor: LexicalEditor): DOMExportOutput {
     const {element} = super.exportDOM(editor);
-    if (element && element instanceof HTMLElement) {
+    if (element && element instanceof HTMLElement) { // Ensure element is HTMLElement
       const img = document.createElement('img');
       img.setAttribute('src', this.__src);
       img.setAttribute('alt', this.__altText);
@@ -282,9 +295,12 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       }
       element.appendChild(img);
 
+      // Export caption if shown
       if (this.__showCaption && this.__caption) {
         const captionDiv = document.createElement('div');
-        captionDiv.setAttribute('data-lexical-image-caption', 'true');
+        captionDiv.setAttribute('data-lexical-image-caption', 'true'); // For potential re-import logic
+        // A simple text content export for caption for now.
+        // For full fidelity, you'd need to serialize the caption editor's state to HTML.
         this.__caption.getEditorState().read(() => {
             const captionText = this.__caption.getRootElement()?.getTextContent();
             captionDiv.textContent = captionText || '';
@@ -302,7 +318,7 @@ export type ImagePayload = {
   src: string;
   width?: 'inherit' | number;
   showCaption?: boolean;
-  caption?: LexicalEditor;
+  caption?: LexicalEditor; // For internal use when creating node
   key?: NodeKey;
 };
 
@@ -313,7 +329,7 @@ export function $createImageNode({
   src,
   width,
   showCaption,
-  caption,
+  caption, // This would typically not be passed directly on initial creation from user input
   key,
 }: ImagePayload): ImageNode {
   return $applyNodeReplacement(
@@ -323,7 +339,7 @@ export function $createImageNode({
       width,
       height,
       showCaption,
-      caption,
+      caption, // caption editor instance
       key
     )
   );
@@ -334,3 +350,4 @@ export function $isImageNode(
 ): node is ImageNode {
   return node instanceof ImageNode;
 }
+

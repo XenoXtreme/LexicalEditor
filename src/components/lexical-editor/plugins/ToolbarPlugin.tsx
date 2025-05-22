@@ -38,11 +38,12 @@ import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontal
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { $createImageNode, type ImagePayload } from '../nodes/ImageNode.tsx';
 import { INSERT_EQUATION_COMMAND, type InsertEquationPayload } from '../plugins/EquationPlugin';
+import { INSERT_COLLAPSIBLE_COMMAND } from './Collapsible'; // Updated import path
 
 
 import {
   Bold, Italic, Underline, Code as CodeIcon, Link2, List, ListOrdered, ListChecks, Quote, Pilcrow, Heading1, Heading2, Heading3, Undo, Redo, AlignLeft, AlignCenter, AlignRight, AlignJustify, Palette, CaseSensitive, Eraser, Copy, Type, ChevronDown, Highlighter, PlusSquare, Minus, TableIcon, ImageIcon as ImageIconLucide, Sparkles, Loader2, Indent, Outdent, Calculator, CaseLower, CaseUpper, Subscript, Superscript, Strikethrough as StrikethroughIcon, Baseline,
-  Vote, StickyNote, SplitSquareHorizontal
+  Vote, StickyNote, SplitSquareHorizontal, ChevronsUpDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -245,7 +246,7 @@ export default function ToolbarPlugin() {
 
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkDialogUrl, setLinkDialogUrl] = useState('https://');
-  const [linkDialogText, setLinkDialogText] = useState(''); // New state for link text
+  const [linkDialogText, setLinkDialogText] = useState(''); 
   const [isEditingLink, setIsEditingLink] = useState(false);
 
 
@@ -268,7 +269,7 @@ export default function ToolbarPlugin() {
           urlToEdit = parentLink.getURL();
           textToEdit = parentLink.getTextContent();
           editing = true;
-        } else if (($isLinkNode(node) || $isAutoLinkNode(node))) { // Check if the selected node itself is a link
+        } else if (($isLinkNode(node) || $isAutoLinkNode(node))) { 
           urlToEdit = node.getURL();
           textToEdit = node.getTextContent();
           editing = true;
@@ -277,7 +278,7 @@ export default function ToolbarPlugin() {
         }
       }
       setLinkDialogUrl(urlToEdit);
-      setLinkDialogText(textToEdit); // Set the link text state
+      setLinkDialogText(textToEdit); 
       setIsEditingLink(editing);
     });
     setIsLinkDialogOpen(true);
@@ -304,20 +305,17 @@ export default function ToolbarPlugin() {
       setIsLink(!!parentLink);
 
       // Block type and code language states
-      const currentSelectedNode = getSelectedNode(selection);
       const anchorNode = selection.anchor.getNode();
-      const element = $isRootOrShadowRoot(anchorNode)
+      let element = $isRootOrShadowRoot(anchorNode)
         ? anchorNode
         : $findMatchingParent(anchorNode, (e) => {
             const parent = e.getParent();
             return parent !== null && $isRootOrShadowRoot(parent);
           }) || anchorNode.getTopLevelElementOrThrow();
-      
-      const elementKey = element.getKey();
-      const elementDOM = editor.getElementByKey(elementKey);
 
-      if (elementDOM !== null) {
-        setSelectedElementKey(elementKey);
+      if (element) {
+        const elementKeyVal = element.getKey();
+        
         if ($isListNode(element)) {
           const parentList = $getNearestNodeOfType(anchorNode, ListNode);
           const type = parentList ? parentList.getListType() : element.getListType();
@@ -331,9 +329,13 @@ export default function ToolbarPlugin() {
           } else {
             setBlockType('paragraph');
           }
+
           if ($isCodeNode(element)) {
+            setSelectedElementKey(elementKeyVal); // For copy button
             const language = element.getLanguage() as keyof typeof CODE_LANGUAGE_FRIENDLY_NAME_MAP;
             setCodeLanguage(language || getDefaultCodeLanguage() || 'plaintext');
+          } else {
+            setSelectedElementKey(null);
           }
         }
       }
@@ -344,11 +346,11 @@ export default function ToolbarPlugin() {
       setCurrentFontFamily(LexicalSelectionUtil.$getSelectionStyleValueForProperty(selection, 'font-family', `var(--font-roboto), sans-serif`));
 
       // Element alignment state
-      let formatableNode: any = currentSelectedNode; 
-      if (typeof formatableNode.getFormatType !== 'function') { 
-          formatableNode = $findMatchingParent(currentSelectedNode, (n: any) => $isElementNode(n) && typeof n.getFormatType === 'function');
+      let formatableNode: any = anchorNode; 
+      if (formatableNode && typeof formatableNode.getFormatType !== 'function') { 
+          formatableNode = $findMatchingParent(anchorNode, (n: any) => $isElementNode(n) && typeof n.getFormatType === 'function');
       }
-      if (formatableNode && typeof formatableNode.getFormatType === 'function') {
+      if (formatableNode && typeof formatableNode.getFormatType === 'function' && !$isRootOrShadowRoot(formatableNode)) {
         setElementFormat(formatableNode.getFormatType());
       } else {
         const root = $getRoot();
@@ -467,9 +469,6 @@ const handleLinkDialogSubmit = useCallback(() => {
                 if($isTextNode(textNode)){ 
                     textNode.setTextContent(linkDialogText);
                 } else {
-                    // If the first child is not a text node, or if there are no children,
-                    // remove existing children and append a new text node. This handles cases
-                    // where the link node might contain other nested nodes.
                     linkNodeToUpdate.getChildren().forEach(child => child.remove());
                     linkNodeToUpdate.append($createTextNode(linkDialogText));
                 }
@@ -661,6 +660,17 @@ const handleLinkDialogSubmit = useCallback(() => {
   const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            toast({
+                variant: 'destructive',
+                title: 'File too large',
+                description: 'Please select an image file smaller than 5MB.',
+            });
+            setImageFile(null);
+            const fileInput = document.getElementById('image-file-input') as HTMLInputElement;
+            if (fileInput) fileInput.value = ''; // Reset file input
+            return;
+        }
         setImageFile(file);
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -674,13 +684,27 @@ const handleLinkDialogSubmit = useCallback(() => {
 
   const handleInsertImage = () => {
     let srcToInsert = imageUrl.trim();
-    if (!srcToInsert && !imageFile) {
+    if (!srcToInsert && !imageFile) { // If no URL and no file, use placeholder
         srcToInsert = 'https://placehold.co/400x300.png';
+    } else if (imageFile && !srcToInsert) { // If file selected but URL state not updated yet (should be by reader.onload)
+        // This case implies the reader hasn't finished. Better to disable insert button until URL is ready.
+        // For now, just rely on the imageUrl state which is set by reader.onload.
+        // If reader fails or is slow, srcToInsert might be empty.
     }
 
-    const alt = imageAltText.trim() || 'Placeholder image';
+
+    const alt = imageAltText.trim() || (imageFile ? imageFile.name : 'Placeholder image');
     const initialWidth = 400;
     const initialHeight = 300;
+
+    if (!srcToInsert) {
+        toast({
+            variant: 'destructive',
+            title: 'Image source missing',
+            description: 'Please provide an image URL or upload a file.',
+        });
+        return;
+    }
 
     editor.dispatchCommand(INSERT_IMAGE_COMMAND, {src: srcToInsert, altText: alt, width: initialWidth, height: initialHeight, showCaption: false});
     setIsInsertImageDialogOpen(false);
@@ -907,8 +931,6 @@ const handleLinkDialogSubmit = useCallback(() => {
       </DropdownMenu>
 
 
-      <Separator orientation="vertical" className="h-6 mx-1" />
-
       <Dialog open={isGenAIDialogOpen} onOpenChange={setIsGenAIDialogOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="icon" title="Generate Text with AI">
@@ -970,6 +992,9 @@ const handleLinkDialogSubmit = useCallback(() => {
           <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_COLUMNS_LAYOUT_COMMAND, undefined)}>
             <SplitSquareHorizontal className="mr-2 h-4 w-4" /> Columns Layout
           </DropdownMenuItem>
+           <DropdownMenuItem onClick={() => editor.dispatchCommand(INSERT_COLLAPSIBLE_COMMAND, undefined)}>
+            <ChevronsUpDown className="mr-2 h-4 w-4" /> Collapsible
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <Separator orientation="vertical" className="h-6 mx-1" />
@@ -1027,7 +1052,6 @@ const handleLinkDialogSubmit = useCallback(() => {
               setIsEditingLink(false);
           }
         }}>
-          {/* DialogTrigger is now inside the new consolidated dropdown */}
           <DialogContent className="sm:max-w-md">
               <DialogHeader>
                   <DialogTitle>{isEditingLink ? "Edit Link" : "Insert Link"}</DialogTitle>
@@ -1111,3 +1135,4 @@ const handleLinkDialogSubmit = useCallback(() => {
     </div>
   );
 }
+

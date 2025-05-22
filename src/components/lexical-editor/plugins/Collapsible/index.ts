@@ -1,3 +1,4 @@
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -6,7 +7,7 @@
  *
  */
 
-import './Collapsible.css';
+import './Collapsible.css'; // We will replace this with Tailwind in globals.css
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
@@ -137,9 +138,11 @@ export default function CollapsiblePlugin(): null {
 
         if ($isCollapsibleContainerNode(container)) {
           const titleNode = container.getFirstChild();
-          if (titleNode && selection.anchor.key === titleNode.getKey() && selection.anchor.offset === 0) {
-            // We're at the start of the title, collapse the container
-            return container.collapseAtStart(selection);
+          if (titleNode && $isCollapsibleTitleNode(titleNode) && selection.anchor.key === titleNode.getFirstDescendant()?.getKey() && selection.anchor.offset === 0 && titleNode.isEmpty()) {
+            // We're at the start of an empty title, collapse the container
+            // This might need more complex logic, like removing the container and its content
+            // For now, let's try to replace the container with its content
+             return container.collapseAtStart(selection);
           }
         }
       }
@@ -196,6 +199,9 @@ export default function CollapsiblePlugin(): null {
           node.replace($createParagraphNode().append(...node.getChildren()));
           return;
         }
+         if (node.isEmpty()) {
+            node.append($createParagraphNode()); // Ensure title is never truly empty internally
+        }
       }),
 
       editor.registerNodeTransform(CollapsibleContainerNode, (node) => {
@@ -205,17 +211,24 @@ export default function CollapsiblePlugin(): null {
           !$isCollapsibleTitleNode(children[0]) ||
           !$isCollapsibleContentNode(children[1])
         ) {
-          for (const child of children) {
+          // This logic might be too aggressive if it unwraps user content.
+          // It's meant to correct invalid structures.
+          // For now, we'll keep it as is, derived from the playground.
+          const nodesToPreserve: LexicalNode[] = [];
+          children.forEach(child => {
+            if ($isElementNode(child)) {
+                nodesToPreserve.push(...child.getChildren());
+            } else {
+                nodesToPreserve.push(child);
+            }
+          });
+          for (const child of nodesToPreserve) {
             node.insertBefore(child);
           }
           node.remove();
         }
       }),
 
-      // When collapsible is the last child pressing down/right arrow will insert paragraph
-      // below it to allow adding more content. It's similar what $insertBlockNode
-      // (mainly for decorators), except it'll always be possible to continue adding
-      // new content even if trailing paragraph is accidentally deleted
       editor.registerCommand(
         KEY_ARROW_DOWN_COMMAND,
         $onEscapeDown,
@@ -228,10 +241,6 @@ export default function CollapsiblePlugin(): null {
         COMMAND_PRIORITY_LOW,
       ),
 
-      // When collapsible is the first child pressing up/left arrow will insert paragraph
-      // above it to allow adding more content. It's similar what $insertBlockNode
-      // (mainly for decorators), except it'll always be possible to continue adding
-      // new content even if leading paragraph is accidentally deleted
       editor.registerCommand(
         KEY_ARROW_UP_COMMAND,
         $onEscapeUp,
@@ -244,7 +253,6 @@ export default function CollapsiblePlugin(): null {
         COMMAND_PRIORITY_LOW,
       ),
 
-      // Enter goes from Title to Content rather than a new line inside Title
       editor.registerCommand(
         INSERT_PARAGRAPH_COMMAND,
         () => {
@@ -261,7 +269,18 @@ export default function CollapsiblePlugin(): null {
                 if (!container.getOpen()) {
                   container.toggleOpen();
                 }
-                titleNode.getNextSibling()?.selectEnd();
+                // Move selection to the start of the content node
+                const contentNode = titleNode.getNextSibling();
+                if ($isCollapsibleContentNode(contentNode)) {
+                    const firstChild = contentNode.getFirstChild();
+                    if (firstChild) {
+                        firstChild.selectStart();
+                    } else { // If content is empty, append a paragraph and select it
+                        const p = $createParagraphNode();
+                        contentNode.append(p);
+                        p.select();
+                    }
+                }
                 return true;
               }
             }
@@ -286,14 +305,20 @@ export default function CollapsiblePlugin(): null {
         () => {
           editor.update(() => {
             const title = $createCollapsibleTitleNode();
-            const paragraph = $createParagraphNode();
-            $insertNodeToNearestRoot(
-              $createCollapsibleContainerNode(true).append(
-                title.append(paragraph),
-                $createCollapsibleContentNode().append($createParagraphNode()),
-              ),
+            const paragraphInTitle = $createParagraphNode(); // Title must contain a paragraph
+            title.append(paragraphInTitle);
+
+            const content = $createCollapsibleContentNode().append(
+              $createParagraphNode(), // Content starts with an empty paragraph
             );
-            paragraph.select();
+            
+            const container = $createCollapsibleContainerNode(true).append(
+              title,
+              content,
+            );
+
+            $insertNodeToNearestRoot(container);
+            paragraphInTitle.select(); // Select the paragraph inside the title
           });
           return true;
         },
@@ -304,3 +329,4 @@ export default function CollapsiblePlugin(): null {
 
   return null;
 }
+

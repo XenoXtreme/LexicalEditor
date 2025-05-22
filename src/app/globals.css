@@ -248,20 +248,20 @@ body {
 
   /* Image Node Styles */
   .editor-image {
-    @apply my-2 inline-block; 
+    @apply my-2 inline-block; /* Changed from flex to inline-block for better flow with text */
   }
   .editor-image img {
-    @apply max-w-full h-auto block; 
+    @apply max-w-full h-auto block; /* Ensure image scales and is block */
   }
   /* Caption specific styling */
   .editor-image-caption-paragraph {
     @apply text-sm text-muted-foreground text-center mt-1 mb-0;
   }
   .image-caption-editor-wrapper .editor-placeholder {
-    @apply text-sm text-center top-1/2 -translate-y-1/2 left-0 right-0; 
+    @apply text-sm text-center top-1/2 -translate-y-1/2 left-0 right-0; /* Center placeholder */
   }
   .caption-content-editable {
-    @apply p-1; 
+    @apply p-1; /* Padding for caption input area */
   }
 
 
@@ -291,11 +291,11 @@ body {
   .editor-equation-inline {
     @apply inline-block align-middle;
   }
-  .editor-equation .katex-display { 
-    @apply my-2 mx-auto; 
+  .editor-equation .katex-display { /* For block equations */
+    @apply my-2 mx-auto; /* Center block equations */
   }
   .editor-equation .katex {
-    @apply text-base;
+    @apply text-base; /* Adjust KaTeX font size if needed */
   }
 
   /* Collapsible Container Styles */
@@ -318,5 +318,10 @@ body {
   .editor-collapsible-content {
     @apply p-2 border-t border-border;
   }
+  /* Hide content when container is not open, using data attribute */
+  .editor-collapsible-container[data-open="false"] .editor-collapsible-content {
+    @apply hidden;
+  }
+
 
 }

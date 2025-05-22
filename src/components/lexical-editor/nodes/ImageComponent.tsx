@@ -16,7 +16,7 @@ import {
   KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
-  ParagraphNode, TextNode, LineBreakNode,
+  ParagraphNode, TextNode, LineBreakNode, $isElementNode,
 } from 'lexical';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -30,11 +30,11 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Edit3, Check, X, MessageSquarePlus } from 'lucide-react';
 
-const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
+const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode]; // Nodes for the caption editor
 
 function isEditorActuallyReadOnly(editor: LexicalEditor | null | undefined): boolean {
   if (!editor || typeof editor.isReadOnly !== 'function') {
-    return true;
+    return true; // Default to read-only if editor or method is invalid
   }
   return editor.isReadOnly();
 }
@@ -43,13 +43,13 @@ function ImageResizer({
   onResizeStart,
   onResizeEnd,
   imageRef,
-  editor: parentEditor,
+  editor: parentEditor, // Renamed to avoid conflict with LexicalEditor instance passed to ImageComponent
   imageNodeKey,
 }: {
   onResizeStart: () => void;
   onResizeEnd: (width: number, height: number) => void;
   imageRef: React.RefObject<HTMLImageElement>;
-  editor: LexicalEditor;
+  editor: LexicalEditor; // This is the main editor instance
   imageNodeKey: NodeKey;
 }): JSX.Element {
   const controlWrapperRef = useRef<HTMLDivElement>(null);
@@ -60,7 +60,7 @@ function ImageResizer({
   const positioningRef = useRef<{
     currentHeight: number;
     currentWidth: number;
-    direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+    direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7; // NW, N, NE, W, E, SW, S, SE
     isResizing: boolean;
     ratio: number;
     startHeight: number;
@@ -292,9 +292,9 @@ export default function ImageComponent({
   height,
   nodeKey,
   showCaption,
-  captionEditor: captionEditorInstance,
+  captionEditor: captionEditorInstance, // Renamed to avoid conflict with parentEditor
   resizable,
-  editor: parentEditor,
+  editor: parentEditor, // This is the main editor instance
 }: {
   src: string;
   altText: string;
@@ -302,12 +302,12 @@ export default function ImageComponent({
   height?: 'inherit' | number;
   nodeKey: NodeKey;
   showCaption?: boolean;
-  captionEditor?: LexicalEditor;
+  captionEditor?: LexicalEditor; // This is the dedicated editor for the caption
   resizable?: boolean;
-  editor: LexicalEditor;
+  editor: LexicalEditor; // Main editor instance
 }): JSX.Element {
   const imageWrapperRef = useRef<HTMLDivElement | null>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null); // Ref for the actual <img> tag
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -349,34 +349,40 @@ export default function ImageComponent({
     const unregister = mergeRegister(
       parentEditor.registerUpdateListener(({ editorState }) => {
         if (isMounted) {
-          // Potential future use
+          // Potential future use for reacting to editor state changes
         }
       }),
       parentEditor.registerCommand<MouseEvent>(
         CLICK_COMMAND,
         (payload) => {
           const event = payload;
-          if (isResizing) return true;
+          if (isResizing) return true; // Don't change selection while resizing
 
           const target = event.target as Node;
+          // Check if the click is within the caption editor
           const captionEditorElement = imageWrapperRef.current?.querySelector('.image-caption-editor-wrapper');
           if (captionEditorElement && captionEditorElement.contains(target)) {
-            return false; // Let caption editor handle clicks
+            // If caption is clicked, do not select the image node itself, let caption editor handle focus.
+            // However, if the image itself was previously selected, we might want to keep it selected or clear selection
+            // depending on desired UX. For now, let's assume clicking caption means interacting with caption.
+            return false; // Let caption editor handle clicks within its bounds
           }
-
+          
+          // Check if click is on the image or its wrapper (but not caption)
           if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
             if (!event.shiftKey) {
-              clearSelection();
+              clearSelection(); // Clear other selections
             }
-            setSelected(true); // Always select on click
-            return true;
+            setSelected(true); // Select this image
+            return true; // Event handled
           }
+
           // If clicked outside, and this image was selected, clear selection
           if (isSelected) {
             clearSelection();
             setSelected(false);
           }
-          return false;
+          return false; // Event not handled by this image
         },
         COMMAND_PRIORITY_LOW,
       ),
@@ -384,9 +390,9 @@ export default function ImageComponent({
         DRAGSTART_COMMAND,
         (event) => {
             const target = event.target as Node;
+            // Prevent native image dragging if the image is selected and resizable, or currently resizing
             if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
-                // Prevent native image dragging if the image is selected or resizable
-                if (isSelected || (resizable && !editorReadOnly)) {
+                if ((isSelected && resizable && !editorReadOnly) || isResizing) {
                     event.preventDefault();
                     return true;
                 }
@@ -399,6 +405,8 @@ export default function ImageComponent({
       parentEditor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
       parentEditor.registerCommand(KEY_ESCAPE_COMMAND, onEscape, COMMAND_PRIORITY_LOW),
       parentEditor.registerCommand(KEY_ENTER_COMMAND, (event) => {
+        // Prevent inserting paragraphs or splitting the image node when it's selected and Enter is pressed.
+        // You might want to customize this to insert a paragraph after the image, for example.
         if (isSelected && $isNodeSelection($getSelection())) {
             event.preventDefault();
             return true;
@@ -430,6 +438,7 @@ export default function ImageComponent({
 
   const onResizeEnd = useCallback(
     (newWidth: number, newHeight: number) => {
+      // If the editor is read-only, don't persist the resize
       if (editorReadOnly) {
           setIsResizing(false);
           return;
@@ -448,7 +457,7 @@ export default function ImageComponent({
   const handleAddCaptionHandler = () => {
     if (editorReadOnly) return;
     parentEditor.update(() => {
-        const node = $getNodeByKey(nodeKey);
+        const node = $getNodeByKey(nodeKey) as ImageNode | null;
         if ($isImageNode(node)) {
             node.setShowCaption(true);
         }
@@ -462,19 +471,20 @@ export default function ImageComponent({
     <Suspense fallback={null}>
       <div
         className={cn(
-          'relative inline-block group editor-image',
-           isSelected && !editorReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm'
+          'relative inline-block group editor-image', // `editor-image` class for global styling
+           isSelected && !editorReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm' // Blue outline when selected
         )}
-        draggable={!editorReadOnly && isSelected && !isResizing}
+        draggable={!editorReadOnly && isSelected && !isResizing} // Make draggable if selected and not resizing
         ref={imageWrapperRef}
         style={{
-          width: imageCurrentWidth === 'auto' ? undefined : `${imageCurrentWidth}px`,
+          width: imageCurrentWidth === 'auto' ? undefined : `${imageCurrentWidth}px`, // Apply width for layout
+          // height: imageCurrentHeight === 'auto' ? undefined : `${imageCurrentHeight}px`, // Height is often auto
           cursor: isSelected && resizable && !editorReadOnly && !isResizing ? 'grab' : (isResizing ? 'grabbing': 'default')
         }}
       >
-        <div className="relative" data-lexical-image-resizer-container>
+        <div className="relative" data-lexical-image-resizer-container> {/* Container for image and resizer */}
             <img
-              ref={imgRef}
+              ref={imgRef} // Ref to the actual <img> tag
               src={src}
               alt={altText}
               className={cn('block', imageCurrentWidth === 'auto' && 'max-w-full', imageCurrentHeight === 'auto' && 'h-auto')}
@@ -482,8 +492,9 @@ export default function ImageComponent({
                 width: imageCurrentWidth === 'auto' ? undefined : `${imageCurrentWidth}px`,
                 height: imageCurrentHeight === 'auto' ? undefined : `${imageCurrentHeight}px`,
               }}
-              data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'}
+              data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'} // AI hint for image search
             />
+            {/* "Add Caption" button appears on hover when image selected and no caption shown */}
             {isSelected && !showCaption && !editorReadOnly && (
                  <Button
                     onClick={handleAddCaptionHandler}
@@ -496,6 +507,7 @@ export default function ImageComponent({
             )}
         </div>
 
+        {/* ImageResizer component, shown when selected and resizable */}
         {isSelected && resizable && !editorReadOnly && imgRef.current && (
           <ImageResizer
             editor={parentEditor}
@@ -506,25 +518,26 @@ export default function ImageComponent({
           />
         )}
       </div>
+      {/* Caption Editor, rendered if showCaption is true and captionEditor instance exists */}
       {showCaption && captionEditorInstance && (
         <div className="image-caption-editor-wrapper mt-1 p-2 border border-input rounded bg-muted/20 focus-within:ring-1 focus-within:ring-ring focus-within:ring-offset-2 rounded-b-md max-w-full"
          style={{ width: imageCurrentWidth === 'auto' ? 'fit-content' : `${imageCurrentWidth}px` }} // Match caption width to image width
         >
           <LexicalNestedComposer
-            initialEditor={captionEditorInstance}
-            initialNodes={captionEditorNodes}
-            initialTheme={{
-              paragraph: 'editor-image-caption-paragraph',
+            initialEditor={captionEditorInstance} // The dedicated LexicalEditor for this caption
+            initialNodes={captionEditorNodes} // Nodes allowed in the caption
+            initialTheme={{ // Theme for the caption editor
+              paragraph: 'editor-image-caption-paragraph', // Custom class for caption paragraph
               placeholder: 'editor-placeholder text-sm text-center absolute top-1/2 -translate-y-1/2 left-0 right-0 pointer-events-none',
             }}
-            skipCollabChecks={true}
+            skipCollabChecks={true} // Important for nested editors
           >
             <RichTextPlugin
               contentEditable={<ContentEditable className="outline-none min-h-[20px] text-sm text-center caption-content-editable" />}
-              placeholder={<div className="editor-placeholder">Type a caption...</div>}
+              placeholder={<div className="editor-placeholder">Type a caption...</div>} // Placeholder text
               ErrorBoundary={({onError}) => { console.error("Caption editor error:", onError); return <div>Caption Error</div>;}}
             />
-            <HistoryPlugin />
+            <HistoryPlugin /> {/* Enable undo/redo for caption */}
           </LexicalNestedComposer>
         </div>
       )}

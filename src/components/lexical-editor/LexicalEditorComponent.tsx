@@ -27,6 +27,7 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
 import EquationPlugin from './plugins/EquationPlugin';
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
+import CollapsiblePlugin, { INSERT_COLLAPSIBLE_COMMAND } from './plugins/Collapsible';
 
 
 import {
@@ -311,10 +312,10 @@ export default function LexicalEditorComponent(): JSX.Element {
           <HorizontalRulePlugin />
           <TablePlugin />
           <EquationPlugin />
-          {/* <CollapsiblePlugin /> // Removed as @lexical/collapsible was causing install issues */}
+          <CollapsiblePlugin /> 
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <BlockAnkerPlugin />
-          <EditorLogicHandler /> {/* Add the logic handler here */}
+          <EditorLogicHandler /> 
         </div>
       </div>
       <Toaster />

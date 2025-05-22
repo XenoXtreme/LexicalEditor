@@ -35,7 +35,7 @@ const theme: EditorThemeClasses = {
     strikethrough: 'editor-text-strikethrough',
     underlineStrikethrough: 'editor-text-underlineStrikethrough',
     code: 'editor-text-code', 
-    highlight: 'editor-text-highlight',
+    highlight: 'editor-text-highlight', // For default highlight format
     subscript: 'align-sub text-xs', 
     superscript: 'align-super text-xs', 
   },
