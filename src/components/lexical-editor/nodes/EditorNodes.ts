@@ -8,7 +8,7 @@ import type { Klass, LexicalNode } from "lexical";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { ImageNode } from "./ImageNode.tsx"; 
 import { EquationNode } from "./EquationNode.tsx"; 
-
+import { ParagraphNode, TextNode, LineBreakNode } from "lexical"; // Import base nodes for caption
 
 const EditorNodes: Array<Klass<LexicalNode>> = [
   HeadingNode,
@@ -25,6 +25,9 @@ const EditorNodes: Array<Klass<LexicalNode>> = [
   HorizontalRuleNode,
   ImageNode,
   EquationNode,
+  ParagraphNode, // Ensure ParagraphNode is registered for main editor and caption
+  TextNode,      // Ensure TextNode is registered
+  LineBreakNode, // Ensure LineBreakNode is registered
 ];
 
 export default EditorNodes;

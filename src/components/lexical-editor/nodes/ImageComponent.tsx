@@ -2,7 +2,7 @@
 "use client";
 import type { LexicalEditor, NodeKey } from 'lexical';
 import * as React from 'react';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { LexicalNestedComposer } from '@lexical/react/LexicalNestedComposer';
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection';
 import { mergeRegister } from '@lexical/utils';
 import {
@@ -16,15 +16,27 @@ import {
   KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
+  ParagraphNode, TextNode, LineBreakNode,
+  createEditor,
+  $createParagraphNode,
+  $createTextNode
 } from 'lexical';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+
 
 import { $isImageNode, ImageNode } from './ImageNode.tsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Image as ImageIcon, Trash2, Edit3, Check, X } from 'lucide-react';
-// Removed: import NextImage from 'next/image'; 
+import { Edit3, Check, X, MessageSquarePlus } from 'lucide-react';
+
+// Minimal set of nodes for the caption editor, ensure these are registered in your main editor too
+// or provide a mechanism for the nested editor to use a specific node set.
+const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
+
 
 // Helper function to safely check editor read-only state
 function isEditorReadOnly(editor: LexicalEditor | null | undefined): boolean {
@@ -37,15 +49,15 @@ function isEditorReadOnly(editor: LexicalEditor | null | undefined): boolean {
 function ImageResizer({
   onResizeStart,
   onResizeEnd,
-  imageRef, // This ref points to the wrapper div
-  editor,
-  nodeKey,
+  imageRef,
+  editor: parentEditor, // Renamed to avoid confusion with nested editor
+  imageNodeKey,
 }: {
   onResizeStart: () => void;
   onResizeEnd: (width: number, height: number) => void;
-  imageRef: React.RefObject<HTMLDivElement>; 
-  editor: LexicalEditor;
-  nodeKey: NodeKey;
+  imageRef: React.RefObject<HTMLDivElement>;
+  editor: LexicalEditor; // This is the main editor instance
+  imageNodeKey: NodeKey;
 }): JSX.Element {
   const controlWrapperRef = useRef<HTMLDivElement>(null);
   const userSelect = useRef({
@@ -55,7 +67,7 @@ function ImageResizer({
   const positioningRef = useRef<{
     currentHeight: number;
     currentWidth: number;
-    direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7; 
+    direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
     isResizing: boolean;
     ratio: number;
     startHeight: number;
@@ -74,42 +86,41 @@ function ImageResizer({
     startY: 0,
   });
 
-  const editorReadOnly = isEditorReadOnly(editor);
-
+  const editorReadOnly = isEditorReadOnly(parentEditor);
   const [isEditingAlt, setIsEditingAlt] = useState(false);
   const [currentAltText, setCurrentAltText] = useState('');
 
 
   useEffect(() => {
-    editor.update(() => {
-        const node = $getNodeByKey(nodeKey) as ImageNode | null;
+    parentEditor.getEditorState().read(() => {
+        const node = $getNodeByKey(imageNodeKey) as ImageNode | null;
         if ($isImageNode(node)) {
            setCurrentAltText(node.getAltText());
         }
     });
-  }, [editor, nodeKey]);
+  }, [parentEditor, imageNodeKey]);
 
 
   const handlePointerDown = (
     event: React.PointerEvent<HTMLDivElement>,
     direction: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7,
   ) => {
-    if (editorReadOnly) return; 
+    if (editorReadOnly) return;
 
     const wrapperElement = imageRef.current;
     const controlWrapper = controlWrapperRef.current;
 
     if (wrapperElement && controlWrapper) {
-      const imageElement = wrapperElement.querySelector('img');
-      if (!imageElement) return;
+      const targetImageElement = wrapperElement.querySelector('img');
+      if (!targetImageElement) return;
 
       event.preventDefault();
-      const { width, height } = imageElement.getBoundingClientRect();
-      
+      const { width, height } = targetImageElement.getBoundingClientRect();
+
       const positioning = positioningRef.current;
       positioning.startWidth = width;
       positioning.startHeight = height;
-      positioning.ratio = width / height; 
+      positioning.ratio = width / height;
       positioning.currentWidth = width;
       positioning.currentHeight = height;
       positioning.startX = event.clientX;
@@ -140,8 +151,8 @@ function ImageResizer({
     const positioning = positioningRef.current;
 
     if (wrapperElement && positioning.isResizing) {
-      const imageElement = wrapperElement.querySelector('img');
-      if (!imageElement) return;
+      const targetImageElement = wrapperElement.querySelector('img');
+      if (!targetImageElement) return;
 
       let newWidth = positioning.startWidth;
       let newHeight = positioning.startHeight;
@@ -149,27 +160,27 @@ function ImageResizer({
       const diffX = event.clientX - positioning.startX;
       const diffY = event.clientY - positioning.startY;
 
-      if ([0, 3, 5].includes(positioning.direction)) { 
+      if ([0, 3, 5].includes(positioning.direction)) {
         newWidth -= diffX;
       }
-      if ([2, 4, 7].includes(positioning.direction)) { 
+      if ([2, 4, 7].includes(positioning.direction)) {
         newWidth += diffX;
       }
-      if ([0, 1, 2].includes(positioning.direction)) { 
+      if ([0, 1, 2].includes(positioning.direction)) {
         newHeight -= diffY;
       }
-      if ([5, 6, 7].includes(positioning.direction)) { 
+      if ([5, 6, 7].includes(positioning.direction)) {
         newHeight += diffY;
       }
-      
-      const minSize = 50;
-      positioning.currentWidth = Math.max(newWidth, minSize); 
-      positioning.currentHeight = Math.max(newHeight, minSize); 
 
-      imageElement.style.width = `${positioning.currentWidth}px`;
-      imageElement.style.height = `${positioning.currentHeight}px`;
-      
-      // Update wrapper div size as well to ensure resizer handles are positioned correctly
+      const minSize = 50;
+      positioning.currentWidth = Math.max(newWidth, minSize);
+      positioning.currentHeight = Math.max(newHeight, minSize);
+
+      targetImageElement.style.width = `${positioning.currentWidth}px`;
+      targetImageElement.style.height = `${positioning.currentHeight}px`;
+
+      // Update the wrapper div's style as well if it directly controls perceived size
       wrapperElement.style.width = `${positioning.currentWidth}px`;
       wrapperElement.style.height = `${positioning.currentHeight}px`;
     }
@@ -181,7 +192,7 @@ function ImageResizer({
       const width = positioning.currentWidth;
       const height = positioning.currentHeight;
       positioning.isResizing = false;
-      onResizeEnd(width, height); 
+      onResizeEnd(width, height);
 
       document.body.style.setProperty(
         '-webkit-user-select',
@@ -199,8 +210,8 @@ function ImageResizer({
   };
 
   const saveAltText = () => {
-    editor.update(() => {
-      const node = $getNodeByKey(nodeKey) as ImageNode | null;
+    parentEditor.update(() => {
+      const node = $getNodeByKey(imageNodeKey) as ImageNode | null;
       if ($isImageNode(node)) {
         node.getWritable().__altText = currentAltText;
       }
@@ -269,9 +280,10 @@ export default function ImageComponent({
   width,
   height,
   nodeKey,
-  showCaption, 
-  caption, 
+  showCaption,
+  captionEditor: captionEditorInstance, // Renamed to avoid conflict with prop name
   resizable,
+  editor: parentEditor,
 }: {
   src: string;
   altText: string;
@@ -279,16 +291,15 @@ export default function ImageComponent({
   height?: 'inherit' | number;
   nodeKey: NodeKey;
   showCaption?: boolean;
-  caption?: LexicalEditor;
+  captionEditor?: LexicalEditor; // Prop name is captionEditor
   resizable?: boolean;
+  editor: LexicalEditor;
 }): JSX.Element {
   const imageWrapperRef = useRef<HTMLDivElement | null>(null);
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
-  const [editor] = useLexicalComposerContext();
-  const [selection, setSelection] = useState<any>(null); 
   const [isResizing, setIsResizing] = useState(false);
 
-  const editorIsActuallyReadOnly = editor && typeof editor.isReadOnly === 'function' ? editor.isReadOnly() : true;
+  const editorIsActuallyReadOnly = parentEditor && typeof parentEditor.isReadOnly === 'function' ? parentEditor.isReadOnly() : true;
 
 
   const onDelete = useCallback(
@@ -307,18 +318,12 @@ export default function ImageComponent({
     [isSelected, nodeKey],
   );
 
-  const onEnter = useCallback(
-    (event: KeyboardEvent) => {
-      return false; 
-    },
-    [],
-  );
 
   const onEscape = useCallback(
     (event: KeyboardEvent) => {
       if (isSelected) {
         clearSelection();
-        setSelected(false); 
+        setSelected(false);
         return true;
       }
       return false;
@@ -329,17 +334,24 @@ export default function ImageComponent({
   useEffect(() => {
     let isMounted = true;
     const unregister = mergeRegister(
-      editor.registerUpdateListener(({ editorState }) => {
+      parentEditor.registerUpdateListener(({ editorState }) => {
         if (isMounted) {
-          setSelection(editorState.read($getSelection));
+          // setSelection(editorState.read($getSelection)); // Original purpose unclear, remove if not needed
         }
       }),
-      editor.registerCommand<MouseEvent>(
+      parentEditor.registerCommand<MouseEvent>(
         CLICK_COMMAND,
         (payload) => {
           const event = payload;
-          if (isResizing) return true; 
-          if (imageWrapperRef.current && imageWrapperRef.current.contains(event.target as Node)) {
+          if (isResizing) return true;
+
+          const target = event.target as Node;
+          const captionEditorElement = imageWrapperRef.current?.querySelector('.image-caption-editor-wrapper');
+          if (captionEditorElement && captionEditorElement.contains(target)) {
+            return false;
+          }
+
+          if (imageWrapperRef.current && imageWrapperRef.current.contains(target)) {
             if (event.shiftKey) {
               setSelected(!isSelected);
             } else {
@@ -352,21 +364,20 @@ export default function ImageComponent({
         },
         COMMAND_PRIORITY_LOW,
       ),
-      editor.registerCommand(
+      parentEditor.registerCommand(
         DRAGSTART_COMMAND,
         (event) => {
           if (imageWrapperRef.current && imageWrapperRef.current.contains(event.target as Node)) {
-             if(isSelected || resizable) event.preventDefault();
+            if(isSelected || resizable) event.preventDefault();
             return true;
           }
           return false;
         },
         COMMAND_PRIORITY_LOW,
       ),
-      editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_ESCAPE_COMMAND, onEscape, COMMAND_PRIORITY_LOW),
+      parentEditor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
+      parentEditor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
+      parentEditor.registerCommand(KEY_ESCAPE_COMMAND, onEscape, COMMAND_PRIORITY_LOW),
     );
     return () => {
       isMounted = false;
@@ -374,12 +385,11 @@ export default function ImageComponent({
     };
   }, [
     clearSelection,
-    editor,
+    parentEditor,
     isResizing,
     isSelected,
     nodeKey,
     onDelete,
-    onEnter,
     onEscape,
     setSelected,
     resizable,
@@ -392,18 +402,14 @@ export default function ImageComponent({
 
   const onResizeEnd = useCallback(
     (newWidth: number, newHeight: number) => {
-      if (!editor) {
-        return;
-      }
-      
       if (editorIsActuallyReadOnly) {
           setIsResizing(false);
           return;
       }
 
-      if (isResizing) { 
+      if (isResizing) {
         setIsResizing(false);
-        editor.update(() => {
+        parentEditor.update(() => {
           const node = $getNodeByKey(nodeKey);
           if ($isImageNode(node)) {
             node.setWidthAndHeight(newWidth, newHeight);
@@ -411,58 +417,97 @@ export default function ImageComponent({
         });
       }
     },
-    [editor, nodeKey, isResizing, editorIsActuallyReadOnly], 
+    [parentEditor, nodeKey, isResizing, editorIsActuallyReadOnly],
   );
 
+  const handleAddCaption = () => {
+    parentEditor.update(() => {
+        const node = $getNodeByKey(nodeKey);
+        if ($isImageNode(node)) {
+            node.setShowCaption(true);
+        }
+    });
+  };
 
-  const imageInitialWidth = typeof width === 'number' ? width : (resizable ? 400 : undefined); 
-  const imageInitialHeight = typeof height === 'number' ? height : (resizable && imageInitialWidth ? imageInitialWidth * 0.75 : undefined); 
+  const imageInitialWidth = typeof width === 'number' ? width : (resizable ? 400 : undefined);
+  const imageInitialHeight = typeof height === 'number' ? height : (resizable && imageInitialWidth ? imageInitialWidth * 0.75 : undefined);
 
 
   return (
     <Suspense fallback={null}>
-      <div 
+      <div
         className={cn(
-          'relative inline-block group editor-image', // Added editor-image class from theme
+          'relative inline-block group editor-image',
            isSelected && !editorIsActuallyReadOnly && 'outline outline-2 outline-primary outline-offset-2 rounded-sm'
-        )} 
+        )}
         draggable={!editorIsActuallyReadOnly && isSelected}
         ref={imageWrapperRef}
-        style={{ 
+        style={{
           width: typeof imageInitialWidth === 'number' ? `${imageInitialWidth}px` : 'auto',
           height: typeof imageInitialHeight === 'number' ? `${imageInitialHeight}px` : 'auto',
           cursor: isSelected && resizable && !editorIsActuallyReadOnly && !isResizing ? 'grab' : (isResizing ? 'grabbing': 'default')
         }}
       >
-        <img
-          src={src}
-          alt={altText}
-          width={typeof imageInitialWidth === 'number' ? imageInitialWidth : undefined}
-          height={typeof imageInitialHeight === 'number' ? imageInitialHeight : undefined}
-          className={cn(
-            'block', 
-            (typeof imageInitialWidth !== 'number' || typeof imageInitialHeight !== 'number') && 'max-w-full h-auto', // Apply only if not fixed size
-            resizable && !editorIsActuallyReadOnly && isSelected && 'cursor-grab',
-            resizable && !editorIsActuallyReadOnly && isResizing && 'cursor-grabbing',
-          )}
-          style={{
-            width: typeof imageInitialWidth === 'number' ? `${imageInitialWidth}px` : 'auto', // Ensure img style reflects current dimensions
-            height: typeof imageInitialHeight === 'number' ? `${imageInitialHeight}px` : 'auto',
-          }}
-          data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'} 
-        />
+        <div className="relative"> {/* Wrapper for image and Add Caption button */}
+            <img
+              src={src}
+              alt={altText}
+              width={typeof imageInitialWidth === 'number' ? imageInitialWidth : undefined}
+              height={typeof imageInitialHeight === 'number' ? imageInitialHeight : undefined}
+              className={cn(
+                'block',
+                (typeof imageInitialWidth !== 'number' || typeof imageInitialHeight !== 'number') && 'max-w-full h-auto',
+                resizable && !editorIsActuallyReadOnly && isSelected && 'cursor-grab',
+                resizable && !editorIsActuallyReadOnly && isResizing && 'cursor-grabbing',
+              )}
+              style={{
+                width: typeof imageInitialWidth === 'number' ? `${imageInitialWidth}px` : 'auto',
+                height: typeof imageInitialHeight === 'number' ? `${imageInitialHeight}px` : 'auto',
+              }}
+              data-ai-hint={altText.split(' ').slice(0,2).join(' ') || 'image'}
+            />
+            {isSelected && !showCaption && !editorIsActuallyReadOnly && (
+                 <Button
+                    onClick={handleAddCaption}
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 bg-black/70 text-white hover:bg-black/90 h-8 px-3 text-xs"
+                    size="sm"
+                  >
+                    <MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
+                    Add Caption
+                  </Button>
+            )}
+        </div>
+
         {isSelected && resizable && !editorIsActuallyReadOnly && (
           <ImageResizer
-            editor={editor}
-            imageRef={imageWrapperRef} 
-            nodeKey={nodeKey}
+            editor={parentEditor}
+            imageRef={imageWrapperRef}
+            imageNodeKey={nodeKey}
             onResizeStart={onResizeStart}
             onResizeEnd={onResizeEnd}
           />
         )}
       </div>
+      {showCaption && captionEditorInstance && (
+        <div className="image-caption-editor-wrapper mt-1 p-2 border border-input rounded bg-muted/20 focus-within:ring-1 focus-within:ring-ring">
+          <LexicalNestedComposer
+            initialEditor={captionEditorInstance}
+            initialNodes={captionEditorNodes}
+            initialTheme={{
+              paragraph: 'editor-image-caption-paragraph', // Use specific class from globals.css
+              // Add other theme overrides for caption if needed
+            }}
+            skipCollabChecks={true}
+          >
+            <RichTextPlugin
+              contentEditable={<ContentEditable className="outline-none min-h-[20px] text-sm text-center caption-content-editable" />}
+              placeholder={<div className="editor-placeholder text-sm text-center absolute top-0 left-0 right-0 pointer-events-none">Type a caption...</div>}
+              ErrorBoundary={({onError}) => { console.error("Caption editor error:", onError); return <div>Caption Error</div>;}}
+            />
+            <HistoryPlugin />
+          </LexicalNestedComposer>
+        </div>
+      )}
     </Suspense>
   );
 }
-
-    

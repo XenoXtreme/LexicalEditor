@@ -12,16 +12,18 @@ import type {
   SerializedEditor,
   SerializedLexicalNode,
   Spread,
-  UpdateListener,
 } from 'lexical';
 
-import { $applyNodeReplacement, DecoratorNode } from 'lexical';
+import { $applyNodeReplacement, DecoratorNode, createEditor, $createParagraphNode, $createTextNode, ParagraphNode, TextNode, LineBreakNode } from 'lexical';
 import * as React from 'react';
 import { Suspense } from 'react';
 
 const ImageComponent = React.lazy(
   () => import('./ImageComponent'),
 );
+
+// Minimal set of nodes for the caption editor
+const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
 
 
 function convertImageElement(domNode: Node): null | DOMConversionOutput {
@@ -51,40 +53,64 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   __width: 'inherit' | number;
   __height: 'inherit' | number;
   __showCaption: boolean;
-  __caption: LexicalEditor | undefined; 
+  __caption: LexicalEditor; 
 
   static getType(): string {
     return 'image';
   }
 
   static clone(node: ImageNode): ImageNode {
+    const captionEditor = createEditor({
+      nodes: captionEditorNodes,
+      onError: (error) => console.error('Caption editor error (clone):', error),
+    });
+    captionEditor.setEditorState(node.__caption.getEditorState().clone());
+
     return new ImageNode(
       node.__src,
       node.__altText,
       node.__width,
       node.__height,
       node.__showCaption,
-      node.__caption, // Cloning LexicalEditor instance might be tricky; consider deep cloning or re-creating
+      captionEditor, 
       node.__key,
     );
   }
 
   static importJSON(serializedNode: SerializedImageNode): ImageNode {
     const { altText, height, src, width, showCaption, caption: serializedCaption } = serializedNode;
-    const imageNode = $createImageNode({
-      altText,
-      height,
-      src,
-      width,
-      showCaption,
+    
+    const captionEditor = createEditor({
+        nodes: captionEditorNodes,
+        onError: (error) => console.error('Caption editor error (importJSON):', error),
     });
-    // TODO: If caption needs to be deserialized, it requires access to an editor instance
-    // For now, we're not fully implementing caption deserialization here.
-    // if (serializedCaption && imageNode.__caption) {
-    //   const editorState = imageNode.__caption.parseEditorState(serializedCaption.editorState);
-    //   imageNode.__caption.setEditorState(editorState);
-    // }
-    return imageNode;
+
+    if (serializedCaption) {
+      try {
+        const editorState = captionEditor.parseEditorState(serializedCaption.editorState);
+        captionEditor.setEditorState(editorState);
+      } catch (e) {
+        console.error("Error parsing caption editor state:", e);
+        // Fallback to an empty paragraph if parsing fails
+        captionEditor.update(() => {
+          const root = captionEditor.getRootElement();
+          if (root) {
+            root.clear();
+            root.append($createParagraphNode().append($createTextNode()));
+          }
+        });
+      }
+    }
+    
+    const node = new ImageNode( // Use constructor directly
+        src,
+        altText,
+        width,
+        height,
+        showCaption,
+        captionEditor, // Pass the fully setup caption editor
+    );
+    return node;
   }
 
   constructor(
@@ -93,7 +119,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     width?: 'inherit' | number,
     height?: 'inherit' | number,
     showCaption?: boolean,
-    caption?: LexicalEditor, // caption: createEditor(),
+    caption?: LexicalEditor,
     key?: NodeKey,
   ) {
     super(key);
@@ -102,7 +128,17 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     this.__width = width || 'inherit';
     this.__height = height || 'inherit';
     this.__showCaption = showCaption || false;
-    this.__caption = caption; // Caption editor passed in or undefined
+    this.__caption = caption || createEditor({
+        nodes: captionEditorNodes,
+        theme: { // Minimal theme for caption editor
+          paragraph: 'editor-image-caption-paragraph',
+          text: {
+            bold: 'font-bold',
+            italic: 'italic',
+          }
+        },
+        onError: (error) => { console.error('Caption editor error (constructor):', error); },
+    });
   }
 
   exportJSON(): SerializedImageNode {
@@ -114,14 +150,14 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       version: 1,
       width: this.__width === 'inherit' ? undefined : this.__width,
       showCaption: this.__showCaption,
-      caption: this.__caption ? this.__caption.getEditorState().toJSON() : undefined,
+      caption: this.__showCaption ? this.__caption.getEditorState().toJSON() : undefined,
     };
   }
 
   createDOM(config: EditorConfig): HTMLElement {
     const span = document.createElement('span');
     const theme = config.theme;
-    const className = theme.image;
+    const className = theme.image; // This class is for the wrapper around the image AND caption
     if (className !== undefined) {
       span.className = className;
     }
@@ -129,16 +165,13 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   }
 
   updateDOM(prevNode: ImageNode, dom: HTMLElement, config: EditorConfig): boolean {
-    // if (prevNode.__src !== this.__src) {
-    //   // Handled by React component
-    // }
-    // if (prevNode.__altText !== this.__altText) {
-    //    // Handled by React component
-    // }
-    // if (prevNode.__width !== this.__width || prevNode.__height !== this.__height) {
-    //   // Handled by React component
-    // }
-    return false; // Decorator node usually returns false
+    // It's better to handle DOM updates for src, alt, width, height in the React component
+    // if they can change dynamically and need to reflect without a full re-render of the node.
+    // However, for properties like `showCaption` that affect structure, Lexical might need to re-decorate.
+    if (prevNode.__showCaption !== this.__showCaption) {
+      return true; // Returning true triggers re-decoration
+    }
+    return false;
   }
 
   getSrc(): string {
@@ -146,7 +179,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   }
 
   getAltText(): string {
-    return this.__altText;
+    return this.getLatest().__altText;
   }
 
   getWidth(): 'inherit' | number {
@@ -157,6 +190,14 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     return this.getLatest().__height;
   }
 
+  getShowCaption(): boolean {
+    return this.getLatest().__showCaption;
+  }
+  
+  getCaptionEditor(): LexicalEditor {
+    return this.getLatest().__caption;
+  }
+
   setWidthAndHeight(width: 'inherit' | number, height: 'inherit' | number): void {
     const writable = this.getWritable();
     writable.__width = width;
@@ -165,11 +206,15 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   setShowCaption(showCaption: boolean): void {
     const writable = this.getWritable();
-    writable.__showCaption = showCaption;
+    // This might require the node to re-decorate if the component structure changes
+    if (writable.__showCaption !== showCaption) {
+        writable.__showCaption = showCaption;
+        // Potentially trigger an update if needed, though Lexical's reconciliation might handle it
+    }
   }
 
   isResizable(): boolean {
-    return true; // Can be configured if needed
+    return true; 
   }
 
   decorate(editor: LexicalEditor, config: EditorConfig): JSX.Element {
@@ -182,8 +227,9 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
           height={this.__height}
           nodeKey={this.getKey()}
           showCaption={this.__showCaption}
-          caption={this.__caption} // Pass the LexicalEditor instance for the caption
+          captionEditor={this.__caption} 
           resizable={this.isResizable()}
+          editor={editor} // Pass parent editor for updates
         />
       </Suspense>
     );
@@ -195,12 +241,13 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         conversion: convertImageElement,
         priority: 0,
       }),
+      // We might need a custom DOM export/import for the whole figure with caption
     };
   }
 
   exportDOM(editor: LexicalEditor): DOMExportOutput {
-    const {element} = super.exportDOM(editor);
-    if (element && element instanceof HTMLElement) { // Ensure element is HTMLElement
+    const {element} = super.exportDOM(editor); // This creates the span from createDOM
+    if (element && element instanceof HTMLElement) {
       const img = document.createElement('img');
       img.setAttribute('src', this.__src);
       img.setAttribute('alt', this.__altText);
@@ -211,6 +258,14 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         img.setAttribute('height', String(this.__height));
       }
       element.appendChild(img);
+
+      if (this.__showCaption) {
+        const captionDiv = document.createElement('div');
+        captionDiv.setAttribute('data-lexical-image-caption', 'true');
+        // This is a simplified export. For full fidelity, you'd export caption's HTML.
+        captionDiv.textContent = this.__caption.getEditorState().read(() => this.__caption.getRootElement()?.getTextContent() || '');
+        element.appendChild(captionDiv);
+      }
     }
     return {element};
   }
@@ -218,11 +273,11 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
 export type ImagePayload = {
   altText: string;
-  height?: number;
+  height?: 'inherit' | number;
   src: string;
-  width?: number;
+  width?: 'inherit' | number;
   showCaption?: boolean;
-  caption?: LexicalEditor;
+  caption?: LexicalEditor; // Can be pre-filled for new nodes if needed
   key?: NodeKey;
 };
 
@@ -233,7 +288,7 @@ export function $createImageNode({
   src,
   width,
   showCaption,
-  caption,
+  caption, // LexicalEditor instance
   key,
 }: ImagePayload): ImageNode {
   return $applyNodeReplacement(
@@ -254,5 +309,3 @@ export function $isImageNode(
 ): node is ImageNode {
   return node instanceof ImageNode;
 }
-
-    

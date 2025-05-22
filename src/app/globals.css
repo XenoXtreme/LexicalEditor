@@ -250,12 +250,22 @@ body {
 
   /* Image Node Styles */
   .editor-image {
-    @apply my-2 block cursor-default; /* Default cursor for image wrapper */
+    @apply my-2 inline-block; /* Changed from block to inline-block to allow caption to flow correctly */
   }
   .editor-image img {
-    @apply max-w-full h-auto block;
+    @apply max-w-full h-auto block; /* Image itself is block to maintain aspect ratio */
   }
-  /* Add styles for resizable image selections if needed */
+  /* Caption specific styling */
+  .editor-image-caption-paragraph {
+    @apply text-sm text-muted-foreground text-center mt-1 mb-0;
+  }
+  .image-caption-editor-wrapper .editor-placeholder {
+    @apply text-sm text-center top-1/2 -translate-y-1/2 left-0 right-0; /* Centered placeholder */
+  }
+  .caption-content-editable {
+    @apply p-1; /* Minimal padding for caption input area */
+  }
+
 
   /* Table Node Styles */
   .Lexical__table {
@@ -291,3 +301,4 @@ body {
     @apply text-base; /* Adjust base font size for KaTeX if needed */
   }
 }
+
