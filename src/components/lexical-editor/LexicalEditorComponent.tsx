@@ -27,7 +27,7 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
 import EquationPlugin from './plugins/EquationPlugin';
 import BlockAnkerPlugin from './plugins/BlockAnkerPlugin';
-import CollapsiblePlugin, { INSERT_COLLAPSIBLE_COMMAND } from './plugins/Collapsible';
+import CollapsiblePlugin from './plugins/Collapsible'; // Updated to local vendored plugin
 
 
 import {
@@ -43,7 +43,9 @@ import {
   $isRootOrShadowRoot,
   $createTextNode,
   INSERT_PARAGRAPH_COMMAND,
-  // $isTextNode, // Not directly used here anymore
+  $isTextNode,
+  TextFormatType, // Import TextFormatType
+  $isElementNode,
 } from 'lexical';
 
 import { $isListNode, ListNode } from '@lexical/list';
@@ -150,7 +152,7 @@ function EditorLogicHandler() {
                 return true;
               case 'k': // Link: Ctrl+K
                 event.preventDefault();
-                editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined);
+                editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined); // Dispatch custom command
                 return true;
               case '[': // Outdent: Ctrl+[
                 event.preventDefault();
@@ -169,39 +171,40 @@ function EditorLogicHandler() {
       editor.registerCommand(CUSTOM_CLEAR_FORMATTING_COMMAND, () => {
         editor.update(() => {
           const selection = $getSelection();
-          if ($isRangeSelection(selection)) {
-            // LexicalSelectionUtil.$clearFormatting(selection); // This has import issues
-            console.warn("Lexical's $clearFormatting utility is currently affected by an import issue. Performing a limited manual format clearing.");
-
-            LexicalSelectionUtil.$patchStyleText(selection, {
-              'font-family': `var(--font-roboto), sans-serif`,
-              'font-size': '16px',
-              'color': 'inherit',
-              'background-color': 'transparent',
-              'font-weight': '',
-              'font-style': '',
-              'text-decoration': '',
-            });
-            // Toggle off formats
-            if (selection.hasFormat('bold')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
-            if (selection.hasFormat('italic')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
-            if (selection.hasFormat('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
-            if (selection.hasFormat('strikethrough')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
-            if (selection.hasFormat('subscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
-            if (selection.hasFormat('superscript')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
-            if (selection.hasFormat('code')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
-            if (selection.hasFormat('highlight')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
-
-            const anchorNode = selection.anchor.getNode();
-            const element = $findMatchingParent(anchorNode, (e) => {
-              const parent = e.getParent();
-              return parent !== null && $isRootOrShadowRoot(parent);
-            }) || anchorNode.getTopLevelElementOrThrow();
-
-            if ($isListNode(element) || $isCodeNode(element) || isQuoteNodeLexical(element) || $isHeadingNode(element)) {
-              LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
-            }
+          if (!$isRangeSelection(selection)) {
+            return;
           }
+      
+          console.warn("Lexical's $clearFormatting utility is currently affected by an import issue. Performing robust manual format clearing.");
+      
+          const selectedNodes = selection.getNodes();
+      
+          // 1. Clear inline format bits (bold, italic, etc.) from all selected TextNodes
+          selectedNodes.forEach(node => {
+            if ($isTextNode(node)) {
+              const writableNode = node.getWritable();
+              writableNode.setFormat(0); // Clears bold, italic, underline, strikethrough, code, subscript, superscript
+            }
+          });
+      
+          // 2. Explicitly toggle 'highlight' off for the selection if it's present.
+          if (selection.hasFormat('highlight')) {
+            editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'highlight');
+          }
+      
+          // 3. Reset CSS style properties for the selected text to defaults
+          LexicalSelectionUtil.$patchStyleText(selection, {
+            'font-family': '', // Resets to inherited
+            'font-size': '',   // Resets to inherited
+            'color': 'inherit',
+            'background-color': 'transparent',
+            'font-weight': '', // Resets to normal or inherited
+            'font-style': '',  // Resets to normal or inherited
+            'text-decoration': '', // Resets to none or inherited
+          });
+      
+          // 4. Convert selected block elements (headings, lists, quotes, code blocks) to paragraphs
+          LexicalSelectionUtil.$setBlocksType(selection, () => $createParagraphNode());
         });
         return true;
       }, COMMAND_PRIORITY_NORMAL),
@@ -322,3 +325,4 @@ export default function LexicalEditorComponent(): JSX.Element {
     </LexicalComposer>
   );
 }
+
