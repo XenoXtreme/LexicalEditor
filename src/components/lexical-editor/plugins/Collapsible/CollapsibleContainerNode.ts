@@ -1,4 +1,3 @@
-
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -10,7 +9,6 @@
 import {IS_CHROME} from '@lexical/utils';
 import {
   $isElementNode,
-  $createParagraphNode,
   DOMConversionMap,
   DOMConversionOutput,
   DOMExportOutput,
@@ -23,19 +21,15 @@ import {
   RangeSelection,
   SerializedElementNode,
   Spread,
-  $getRoot,
 } from 'lexical';
 
-import {setDomHiddenUntilFound} from './utils';
 import {$isCollapsibleTitleNode} from "./CollapsibleTitleNode";
 import {$isCollapsibleContentNode} from "./CollapsibleContentNode";
-
+import {setDomHiddenUntilFound} from './utils';
 
 type SerializedCollapsibleContainerNode = Spread<
   {
     open: boolean;
-    type: 'collapsible-container';
-    version: 1;
   },
   SerializedElementNode
 >;
@@ -67,47 +61,8 @@ export class CollapsibleContainerNode extends ElementNode {
   }
 
   isShadowRoot(): boolean {
-    return false; 
+    return true;
   }
-
-  canBeEmpty(): boolean {
-    return false;
-  }
-  
-  canInsertTextBefore(): boolean {
-    return true; 
-  }
-  
-  canInsertTextAfter(): boolean {
-    return true; 
-  }
-  
-  isInline(): boolean {
-    return false;
-  }
-
-  extractWithChild(
-    child: LexicalNode, 
-    selection: RangeSelection, 
-    destination: 'clone' | 'html', 
-  ): boolean {
-    if (!$isElementNode(child)) {
-      return false;
-    }
-  
-    const nodesToExtract: LexicalNode[] = [];
-    this.getChildren().forEach(containerChild => {
-      if ($isCollapsibleTitleNode(containerChild) || $isCollapsibleContentNode(containerChild)) {
-        nodesToExtract.push(...containerChild.getChildren());
-      }
-    });
-  
-    nodesToExtract.forEach(node => this.insertBefore(node));
-    
-    this.remove();
-    return true; 
-  }
-  
 
   collapseAtStart(selection: RangeSelection): boolean {
     const nodesToInsert: LexicalNode[] = [];
@@ -144,55 +99,64 @@ export class CollapsibleContainerNode extends ElementNode {
     this.remove();
     return true; 
   }
-  
-  insertNewAfter(selection?: RangeSelection, restoreSelection = true): ElementNode | null {
-    const newElement = $createParagraphNode();
-    this.insertAfter(newElement, restoreSelection);
-    return newElement;
-  }
 
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {
-    const dom = document.createElement('div');
-    dom.setAttribute('data-lexical-collapsible-container', 'true'); // For easier selection/identification
-    dom.setAttribute('data-open', String(this.__open)); // Set initial data-open state
-    const themeClass = config.theme.collapsibleContainer || 'editor-collapsible-container';
-    dom.classList.add(...themeClass.split(' ')); // Apply theme classes
+    // details is not well supported in Chrome #5582
+    let dom: HTMLElement;
+    if (IS_CHROME) {
+      dom = document.createElement('div');
+      dom.setAttribute('open', '');
+    } else {
+      const detailsDom = document.createElement('details');
+      detailsDom.open = this.__open;
+      detailsDom.addEventListener('toggle', () => {
+        const open = editor.getEditorState().read(() => this.getOpen());
+        if (open !== detailsDom.open) {
+          editor.update(() => this.toggleOpen());
+        }
+      });
+      dom = detailsDom;
+    }
+    dom.classList.add('Collapsible__container');
+
     return dom;
   }
 
-  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
+  updateDOM(prevNode: this, dom: HTMLDetailsElement): boolean {
     const currentOpen = this.__open;
     if (prevNode.__open !== currentOpen) {
-      dom.setAttribute('data-open', String(currentOpen)); // Ensure data-open attribute is updated
+      // details is not well supported in Chrome #5582
+      if (IS_CHROME) {
+        const contentDom = dom.children[1];
+        if (!isHTMLElement(contentDom)) {
+          throw new Error('Expected contentDom to be an HTMLElement');
+        }
+        if (currentOpen) {
+          dom.setAttribute('open', '');
+          contentDom.hidden = false;
+        } else {
+          dom.removeAttribute('open');
+          setDomHiddenUntilFound(contentDom);
+        }
+      } else {
+        dom.open = this.__open;
+      }
     }
-    // Returning false means Lexical will not attempt to reconcile children,
-    // which is usually correct if DOM structure is static and only attributes change.
+
     return false;
   }
 
-  static importDOM(): DOMConversionMap<HTMLDetailsElement | HTMLElement> | null {
+  static importDOM(): DOMConversionMap<HTMLDetailsElement> | null {
     return {
-      details: (domNode: HTMLDetailsElement) => { 
+      details: (domNode: HTMLDetailsElement) => {
         return {
           conversion: $convertDetailsElement,
           priority: 1,
         };
       },
-      div: (domNode: HTMLElement) => { 
-        if (domNode.getAttribute('data-lexical-collapsible-container')) {
-           const isOpen = domNode.getAttribute('data-open') === 'true';
-           return {
-            conversion: (domNodeDuringConversion: HTMLElement) => {
-                const node = $createCollapsibleContainerNode(isOpen);
-                return { node };
-            },
-            priority: 2
-           }
-        }
-        return null;
-      }
     };
   }
+
 
   static importJSON(
     serializedNode: SerializedCollapsibleContainerNode,
@@ -201,20 +165,16 @@ export class CollapsibleContainerNode extends ElementNode {
     return node;
   }
 
-  exportDOM(editor: LexicalEditor): DOMExportOutput {
-    const element = document.createElement('div');
-    const themeClass = editor.getEditorConfig().theme.collapsibleContainer || 'editor-collapsible-container';
-    element.classList.add(...themeClass.split(' '));
-    element.setAttribute('data-lexical-collapsible-container', 'true');
-    element.setAttribute('data-open', String(this.__open));
+  exportDOM(): DOMExportOutput {
+    const element = document.createElement('details');
+    element.classList.add('Collapsible__container');
+    element.setAttribute('open', this.__open.toString());
     return {element};
   }
 
   exportJSON(): SerializedCollapsibleContainerNode {
     return {
-      ...super.exportJSON(), 
-      type: 'collapsible-container',
-      version: 1,
+      ...super.exportJSON(),
       open: this.__open,
     };
   }
@@ -234,7 +194,7 @@ export class CollapsibleContainerNode extends ElementNode {
 }
 
 export function $createCollapsibleContainerNode(
-  isOpen: boolean = true, 
+  isOpen: boolean,
 ): CollapsibleContainerNode {
   return new CollapsibleContainerNode(isOpen);
 }

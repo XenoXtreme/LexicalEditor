@@ -43,7 +43,7 @@ function ImageResizer({
   onResizeStart,
   onResizeEnd,
   imageRef,
-  editor: parentEditor, // Renamed to avoid conflict with LexicalEditor instance passed to ImageComponent
+  editor: parentEditor,
   imageNodeKey,
 }: {
   onResizeStart: () => void;

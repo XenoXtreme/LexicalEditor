@@ -1,4 +1,3 @@
-
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -19,26 +18,17 @@ import {
   LexicalNode,
   RangeSelection,
   SerializedElementNode,
-  Spread,
 } from 'lexical';
 
 import {$isCollapsibleContainerNode} from './CollapsibleContainerNode';
 import {$isCollapsibleContentNode} from './CollapsibleContentNode';
 
-type SerializedCollapsibleTitleNode = Spread <
-  {
-    type: 'collapsible-title';
-    version: 1;
-  },
-  SerializedElementNode
->;
-
+type SerializedCollapsibleTitleNode = SerializedElementNode;
 
 export function $convertSummaryElement(
   domNode: HTMLElement,
 ): DOMConversionOutput | null {
   const node = $createCollapsibleTitleNode();
-  // Children will be populated by Lexical's conversion process
   return {
     node,
   };
@@ -54,84 +44,57 @@ export class CollapsibleTitleNode extends ElementNode {
   }
 
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {
-    // Playground uses <summary> for <details> or a <div> for its custom element.
-    // We'll use a div that acts like a summary.
-    const dom = document.createElement('div'); // Use div for styling consistency
-    dom.classList.add(config.theme.collapsibleTitle || 'editor-collapsible-title');
-
-    // Click listener to toggle the parent container
-    dom.addEventListener('click', (event) => {
-      // Prevent clicks on contenteditable children from toggling
-      if ((event.target as HTMLElement).isContentEditable) {
-        return;
-      }
-      editor.update(() => {
-        const collapsibleContainer = this.getLatest().getParentOrThrow();
-        if (!$isCollapsibleContainerNode(collapsibleContainer)) {
-          // This should not happen if node transforms are correct
-          console.error('CollapsibleTitleNode parent is not a CollapsibleContainerNode');
-          return;
-        }
-        collapsibleContainer.toggleOpen();
+    const dom = document.createElement('summary');
+    dom.classList.add('Collapsible__title');
+    if (IS_CHROME) {
+      dom.addEventListener('click', () => {
+        editor.update(() => {
+          const collapsibleContainer = this.getLatest().getParentOrThrow();
+          if (!$isCollapsibleContainerNode(collapsibleContainer)) {
+            throw new Error(
+              'Expected parent node to be a CollapsibleContainerNode',
+            );
+          }
+          collapsibleContainer.toggleOpen();
+        });
       });
-    });
+    }
     return dom;
   }
 
-  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
-    // DOM structure doesn't change based on node properties here
-    return false; // Children reconciliation is handled by Lexical
+  updateDOM(prevNode: this, dom: HTMLElement): boolean {
+    return false;
   }
 
   static importDOM(): DOMConversionMap | null {
     return {
-      summary: (domNode: HTMLElement) => { // For pasting <details><summary>
+      summary: (domNode: HTMLElement) => {
         return {
           conversion: $convertSummaryElement,
           priority: 1,
         };
       },
-      div: (domNode: HTMLElement) => { // For our own representation
-        if (domNode.classList.contains('editor-collapsible-title') || domNode.getAttribute('data-lexical-collapsible-title')) {
-           return {
-            conversion: $convertSummaryElement,
-            priority: 2
-           }
-        }
-        return null;
-      }
     };
   }
 
   static importJSON(
     serializedNode: SerializedCollapsibleTitleNode,
   ): CollapsibleTitleNode {
-    const node = $createCollapsibleTitleNode();
-    // ElementNode's importJSON handles children, format, indent, direction
-    return node;
+    return $createCollapsibleTitleNode()
   }
 
-  exportJSON(): SerializedCollapsibleTitleNode {
-    return {
-      ...super.exportJSON(),
-      type: 'collapsible-title',
-      version: 1,
-    };
-  }
-
-  // Ensure title always has at least one paragraph.
   static transform(): (node: LexicalNode) => void {
     return (node: LexicalNode) => {
-      if ($isCollapsibleTitleNode(node)) {
-        if (node.isEmpty()) {
-          node.append($createParagraphNode());
-        }
+      if (!$isCollapsibleTitleNode(node)) {
+        throw new Error('node is not a CollapsibleTitleNode');
+      }
+      if (node.isEmpty()) {
+        node.remove();
       }
     };
   }
 
-  // Defines behavior when Enter is pressed inside the title
-  insertNewAfter(_selection?: RangeSelection, restoreSelection = true): ElementNode | null {
+  insertNewAfter(_: RangeSelection, restoreSelection = true): ElementNode {
     const containerNode = this.getParentOrThrow();
 
     if (!$isCollapsibleContainerNode(containerNode)) {
@@ -143,43 +106,29 @@ export class CollapsibleTitleNode extends ElementNode {
     if (containerNode.getOpen()) {
       const contentNode = this.getNextSibling();
       if (!$isCollapsibleContentNode(contentNode)) {
-        // This case should be prevented by node transforms ensuring valid structure
-        const newContentNode = $createCollapsibleContentNode().append($createParagraphNode());
-        this.insertAfter(newContentNode); // This might be wrong, should append to container
-        return newContentNode.getFirstChild() as ElementNode; // Or newContentNode itself
+        throw new Error(
+          'CollapsibleTitleNode expects to have CollapsibleContentNode sibling',
+        );
       }
 
       const firstChild = contentNode.getFirstChild();
       if ($isElementNode(firstChild)) {
-        // If content has a first child, select it
-        if (restoreSelection) firstChild.selectStart();
         return firstChild;
       } else {
-        // If content is empty, create a paragraph, append, and select it
         const paragraph = $createParagraphNode();
         contentNode.append(paragraph);
-        if (restoreSelection) paragraph.select();
         return paragraph;
       }
     } else {
-      // If container is closed, Enter creates a new paragraph *after* the container
       const paragraph = $createParagraphNode();
       containerNode.insertAfter(paragraph, restoreSelection);
       return paragraph;
     }
   }
-
-  // Prevent title from being deleted if it's the last child of the container
-  // or if it would leave the container in an invalid state.
-  // This logic might need refinement based on desired UX.
-  // For now, standard ElementNode behavior for collapse/extract is used.
 }
 
 export function $createCollapsibleTitleNode(): CollapsibleTitleNode {
-  const node = new CollapsibleTitleNode();
-  // Ensure it has a paragraph by default via node transform or here
-  // node.append($createParagraphNode());
-  return node;
+  return new CollapsibleTitleNode();
 }
 
 export function $isCollapsibleTitleNode(
