@@ -1,6 +1,9 @@
 
 "use client";
 
+import * as React from 'react';
+import { Suspense } from 'react';
+
 import type {
   DOMConversionMap,
   DOMConversionOutput,
@@ -9,15 +12,11 @@ import type {
   LexicalEditor,
   LexicalNode,
   NodeKey,
-  SerializedEditor,
   SerializedLexicalNode,
   Spread,
-  UpdateListener,
 } from 'lexical';
 
 import { $applyNodeReplacement, DecoratorNode } from 'lexical';
-import * as React from 'react';
-import { Suspense } from 'react';
 
 const ImageComponent = React.lazy(
   // @ts-ignore
@@ -136,7 +135,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     return this.__altText;
   }
 
-  decorate(): JSX.Element {
+  decorate(editor: LexicalEditor, config: EditorConfig): JSX.Element {
     return (
       <Suspense fallback={null}>
         <ImageComponent

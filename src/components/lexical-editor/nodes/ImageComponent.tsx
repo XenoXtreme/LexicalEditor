@@ -33,10 +33,10 @@ import { Edit3, Check, X, MessageSquarePlus } from 'lucide-react';
 const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode]; // Nodes for the caption editor
 
 function isEditorActuallyReadOnly(editor: LexicalEditor | null | undefined): boolean {
-  if (!editor || typeof editor.isReadOnly !== 'function') {
+  if (!editor || typeof editor.isEditable() !== 'function') {
     return true; // Default to read-only if editor or method is invalid
   }
-  return editor.isReadOnly();
+  return editor.isEditable();
 }
 
 function ImageResizer({
@@ -408,7 +408,7 @@ export default function ImageComponent({
         // Prevent inserting paragraphs or splitting the image node when it's selected and Enter is pressed.
         // You might want to customize this to insert a paragraph after the image, for example.
         if (isSelected && $isNodeSelection($getSelection())) {
-            event.preventDefault();
+            event?.preventDefault();
             return true;
         }
         return false;

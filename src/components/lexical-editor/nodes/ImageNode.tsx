@@ -1,4 +1,3 @@
-
 "use client";
 
 import type {
@@ -12,9 +11,19 @@ import type {
   SerializedEditor,
   SerializedLexicalNode,
   Spread,
+  EditorState
 } from 'lexical';
 
-import { $applyNodeReplacement, DecoratorNode, createEditor, $createParagraphNode, ParagraphNode, TextNode, LineBreakNode } from 'lexical';
+import { 
+  $applyNodeReplacement, 
+  DecoratorNode, 
+  createEditor, 
+  $createParagraphNode, 
+  ParagraphNode, 
+  TextNode,
+  LineBreakNode,
+  $getRoot
+} from 'lexical';
 import * as React from 'react';
 import { Suspense } from 'react';
 
@@ -24,7 +33,6 @@ const ImageComponent = React.lazy(
 
 // Minimal set of nodes for the caption editor
 const captionEditorNodes = [ParagraphNode, TextNode, LineBreakNode];
-
 
 function convertImageElement(domNode: Node): null | DOMConversionOutput {
   if (domNode instanceof HTMLImageElement) {
@@ -102,26 +110,26 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   static importJSON(serializedNode: SerializedImageNode): ImageNode {
     const { altText, height, src, width, showCaption, caption: serializedCaption } = serializedNode;
 
-    let initialCaptionEditorStateString: string | undefined;
+    let initialCaptionEditorState: EditorState | undefined;
 
     if (showCaption && serializedCaption && serializedCaption.editorState) {
         try {
             const tempEditorForParsing = createEditor({ nodes: captionEditorNodes, onError: () => {} });
-            const parsedState = tempEditorForParsing.parseEditorState(serializedCaption.editorState);
+            initialCaptionEditorState = tempEditorForParsing.parseEditorState(serializedCaption.editorState);
 
-            if (parsedState.isEmpty()) {
+            if (initialCaptionEditorState.isEmpty()) {
                 // console.warn("ImageNode.importJSON: Serialized caption was empty. Initializing with default.");
-            } else {
-                initialCaptionEditorStateString = JSON.stringify(parsedState.toJSON());
+                initialCaptionEditorState = undefined; // Set to undefined to use default empty state with paragraph
             }
         } catch (e) {
             // console.error("ImageNode.importJSON: Error parsing serialized caption state. Initializing with default.", e);
+            initialCaptionEditorState = undefined; // Set to undefined to use default empty state with paragraph
         }
     }
 
     const captionEditor = createEditor({
         nodes: captionEditorNodes,
-        editorState: initialCaptionEditorStateString,
+        editorState: initialCaptionEditorState,
         theme: {
           paragraph: 'editor-image-caption-paragraph',
         },
@@ -176,7 +184,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       version: 1,
       width: this.__width === 'inherit' ? undefined : this.__width,
       showCaption: this.__showCaption,
-      caption: (this.__showCaption && this.__caption) ? this.__caption.getEditorState().toJSON() : undefined,
+      caption: (this.__showCaption && this.__caption) ? { editorState: this.__caption.getEditorState().toJSON() } : undefined,
     };
   }
 
@@ -240,7 +248,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         // If caption is being shown for the first time, ensure it has content
         if (showCaption && writable.__caption.getEditorState().isEmpty()) {
             writable.__caption.update(() => {
-                const root = writable.__caption.getRootElement();
+                const root = $getRoot();
                 if (root && root.isEmpty()) {
                     root.append($createParagraphNode());
                 }
@@ -302,7 +310,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         // A simple text content export for caption for now.
         // For full fidelity, you'd need to serialize the caption editor's state to HTML.
         this.__caption.getEditorState().read(() => {
-            const captionText = this.__caption.getRootElement()?.getTextContent();
+            const captionText = $getRoot().getTextContent();
             captionDiv.textContent = captionText || '';
         });
         element.appendChild(captionDiv);
@@ -321,7 +329,6 @@ export type ImagePayload = {
   caption?: LexicalEditor; // For internal use when creating node
   key?: NodeKey;
 };
-
 
 export function $createImageNode({
   altText,
@@ -350,4 +357,3 @@ export function $isImageNode(
 ): node is ImageNode {
   return node instanceof ImageNode;
 }
-
