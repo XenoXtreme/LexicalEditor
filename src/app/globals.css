@@ -304,24 +304,28 @@ body {
   }
   .editor-collapsible-title {
     @apply flex justify-between items-center p-2 bg-muted/50 cursor-pointer hover:bg-muted/70;
+    list-style: none; /* Remove default disclosure triangle if it's a summary */
+    outline: none;
   }
-  .editor-collapsible-title summary { /* Target summary if it exists, or style title directly */
-    @apply list-none; /* Remove default disclosure triangle if summary is used */
+  .editor-collapsible-title::marker, /* For Firefox */
+  .editor-collapsible-title::-webkit-details-marker { /* For Chrome/Safari */
+    @apply hidden;
   }
   .editor-collapsible-title::after { /* Custom disclosure triangle */
-    content: '▼';
-    @apply text-xs transform transition-transform;
+    content: '▼'; /* Default: pointing down (closed state) */
+    @apply text-xs transform transition-transform duration-200;
   }
-  .editor-collapsible-container[data-open='true'] .editor-collapsible-title::after {
-    transform: rotate(-180deg);
+  .editor-collapsible-container[data-open='true'] > .editor-collapsible-title::after {
+    transform: rotate(-180deg); /* Pointing up when open */
   }
   .editor-collapsible-content {
     @apply p-2 border-t border-border;
   }
-  /* Hide content when container is not open, using data attribute */
-  .editor-collapsible-container[data-open="false"] .editor-collapsible-content {
+  .editor-collapsible-container[data-open="false"] > .editor-collapsible-content {
     @apply hidden;
   }
-
+   .editor-collapsible-container[data-open="true"] > .editor-collapsible-content {
+    @apply block; /* Or whatever your default display is, e.g., flex */
+  }
 
 }
