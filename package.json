@@ -25,7 +25,6 @@
     "@lexical/selection": "^0.16.1",
     "@lexical/table": "^0.16.1",
     "@lexical/utils": "^0.16.1",
-    "@lexical/collapsible": "^0.16.1",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.6",
     "@radix-ui/react-avatar": "^1.1.3",
