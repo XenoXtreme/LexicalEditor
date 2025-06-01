@@ -12,7 +12,7 @@ import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPl
 import { TRANSFORMERS } from '@lexical/markdown';
 import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin';
 import 'katex/dist/katex.min.css';
-import { mergeRegister, $findMatchingParent } from '@lexical/utils';
+import { mergeRegister } from '@lexical/utils';
 
 
 import EditorTheme from './themes/EditorTheme';
@@ -40,17 +40,11 @@ import {
   KEY_DOWN_COMMAND,
   OUTDENT_CONTENT_COMMAND,
   $createParagraphNode,
-  $isRootOrShadowRoot,
   $createTextNode,
   INSERT_PARAGRAPH_COMMAND,
   $isTextNode,
-  TextFormatType, // Import TextFormatType
-  $isElementNode,
 } from 'lexical';
 
-import { $isListNode, ListNode } from '@lexical/list';
-import { $isCodeNode, CodeNode } from '@lexical/code';
-import { $isHeadingNode, $isQuoteNode as isQuoteNodeLexical, HeadingNode } from '@lexical/rich-text';
 import * as LexicalSelectionUtil from '@lexical/selection';
 
 
@@ -152,7 +146,7 @@ function EditorLogicHandler() {
                 return true;
               case 'k': // Link: Ctrl+K
                 event.preventDefault();
-                editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, undefined); // Dispatch custom command
+                editor.dispatchCommand(OPEN_LINK_DIALOG_COMMAND, null); // Dispatch custom command
                 return true;
               case '[': // Outdent: Ctrl+[
                 event.preventDefault();
